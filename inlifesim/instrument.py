@@ -802,18 +802,21 @@ class Instrument(object):
 
         self.cleanup()
 
-    def run_singlewav_nchop(self,
-                            temp_star,
-                            temp_planet,
-                            radius_planet,
-                            lat_star,
-                            l_sun,
-                            z,
-                            dark_current_pix,
-                            det_temp,
-                            rms_mode,
-                            n_cpu,
-                            separation_planet):
+    def run_singlewav_chop(self,
+                           temp_star,
+                           temp_planet,
+                           radius_planet,
+                           lat_star,
+                           l_sun,
+                           z,
+                           dark_current_pix,
+                           det_temp,
+                           rms_mode,
+                           n_cpu,
+                           separation_planet,
+                           d_a_rms,
+                           d_phi_rms,
+                           d_pol_rms):
 
         self.create_star(temp_star=temp_star)
         self.create_planet(temp_planet=temp_planet,
@@ -833,8 +836,11 @@ class Instrument(object):
         self.pn_thermal_background_detector(detector='MIRI',
                                             det_temp=det_temp)
 
-        self.sn_nchop(n_cpu=n_cpu,
-                      rms_mode=rms_mode)
+        self.sn_chop(n_cpu=n_cpu,
+                     rms_mode=rms_mode,
+                     d_a_rms=d_a_rms,
+                     d_phi_rms=d_phi_rms,
+                     d_pol_rms=d_pol_rms)
 
         self.cleanup()
 
