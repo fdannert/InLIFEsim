@@ -7,7 +7,7 @@ from scipy.fft import fft, fftfreq, fftshift, rfft
 import pandas as pd
 from tqdm import tqdm
 
-from InterNoise.internoise.util import black_body, find_nearest_idx
+from inlifesim.util import black_body, find_nearest_idx
 
 #TODO: Move calculation of the chopped planet signal into the planet signal method
 

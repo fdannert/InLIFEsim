@@ -1,0 +1,1 @@
+from inlifesim.instrument import Instrument

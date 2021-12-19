@@ -1,12 +1,12 @@
 import numpy as np
 
-import internoise as itn
+import inlifesim as ils
 
 def compare_to_lay():
     wl_bins = np.array((10e-6, ))
     wl_bin_widths = np.array((0.5e-6, ))
 
-    inst = itn.Instrument(wl_bins=wl_bins,
+    inst = ils.Instrument(wl_bins=wl_bins,
                           wl_bin_widths=wl_bin_widths,
                           image_size=500,
                           diameter_ap=4.,
