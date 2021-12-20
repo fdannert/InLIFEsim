@@ -721,7 +721,6 @@ class Instrument(object):
             for i in tqdm(range(self.wl_bins.shape[0])):
                 rr = instrumental_noise_single_wav_chop(mp_args[i])
                 res.append(rr)
-            print(res)
         else:
             # collect arguments for multiprocessing
             pool = mp.Pool(n_cpu)
