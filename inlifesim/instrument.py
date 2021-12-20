@@ -887,8 +887,8 @@ def instrumental_noise_single_wav_nchop(mp_arg) -> dict:
     elif rms_mode == 'wavelength':
         if (d_a_rms is None) or (d_phi_rms is None) or (d_pol_rms is None) or (d_x_rms is None) or (d_y_rms is None):
             raise ValueError('RMS values need to be specified in wavelength mode')
-        d_a_rms = d_a_rms * (wl / 4e-6) ** (-1.5)
-        d_phi_rms = d_phi_rms * (wl / 4e-6) ** (-1)
+        d_a_rms = d_a_rms * (wl / 10e-6) ** (-1.5)
+        d_phi_rms = d_phi_rms * (wl / 10e-6) ** (-1)
     else:
         raise ValueError('RMS mode not recongnized')
 
@@ -1079,8 +1079,8 @@ def instrumental_noise_single_wav_chop(mp_arg) -> dict:
     elif rms_mode == 'wavelength':
         if (d_a_rms is None) or (d_phi_rms is None):
             raise ValueError('RMS values need to be specified in wavelength mode')
-        d_a_rms = d_a_rms * (wl / 4e-6) ** (-1.5)
-        d_phi_rms = d_phi_rms * (wl / 4e-6) ** (-1)
+        d_a_rms = d_a_rms * (wl / 10e-6) ** (-1.5)
+        d_phi_rms = d_phi_rms * (wl / 10e-6) ** (-1)
     else:
         raise ValueError('RMS mode not recongnized')
 
