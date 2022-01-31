@@ -24,13 +24,47 @@ class Instrument(object):
                  throughput: float,  # fraction of light that is sustained through the optical train
                  dist_star: float,  # distance to the target system in pc
                  radius_star: float,  # radius of the star in stellar radii
+                 temp_star: float,  # temperature of the host star in Kelvin
+                 lat_star: float,  # ecliptic latitude of the target star
+                 l_sun: float,  # stellar luminosity in solar luminosities
+                 z: float,  # zodi level: the exozodi dust is z-times denser than the localzodi dust
+                 temp_planet: float,  # planet temperature in Kelvin
+                 radius_planet: float,  # planet radius in earth radii
+                 separation_planet: float,  # separation of target planet from host star in AU
                  col_pos: np.ndarray,  # collector position in m
                  phase_response: np.ndarray,  # phase response of each collector arm in rad
                  phase_response_chop: np.ndarray,  # phase response of each collector arm in the chopped state in rad
                  t_rot: float,  # rotation period of the array in seconds
+                 chopping: str,  # run calculation with or without chopping, 'chop', 'nchop', 'both'
                  pix_per_wl,  # pixels on detector used per wavelength channel
+                 detector_dark_current: str,  # detector type, 'MIRI' or 'manual'. Specify dark_current_pix in 'manual'
+                 dark_current_pix: Union[float, type(None)],  # detector dark current in electrons s-1 px-1
+                 detector_thermal: str,  # detector type, 'MIRI'
+                 det_temp: float,  # temperature of the detector environment in K
+                 magnification: float,  # telescope magnification
+                 f_number: float,  # telescope f-number, i.e. ratio of focal length to aperture size
+                 secondary_primary_ratio: float,  # ratio of secondary to primary mirror sizes
+                 primary_emissivity: float,  # emissivity epsilon of the primary mirror
+                 primary_temp: float,  # temperature of the primary mirror in K
                  n_sampling_rot: int,  # number of sampling points per array rotation
-                 pink_noise_co: int,  #
+                 pink_noise_co: int,  # cutoff frequency for the pink noise spectra
+                 n_cpu: int,  # number of cores used in the simulation
+                 rms_mode: str,  # mode for rms values, 'lay', 'static', 'wavelength'
+                 agnostic_mode: bool = False,  # derive instrumental photon noise from agnostic mode
+                 eps_cold: Union[float, type(None)] = None,  # scaling constant for cold agnostic photon noise spectrum
+                 eps_hot: Union[float, type(None)] = None,  # scaling constant for hot agnostic photon noise spectrum
+                 eps_white: Union[float, type(None)] = None,  # scaling constant white agnostic photon noise spectrum
+                 agnostic_spacecraft_temp: Union[float, type(None)] = None,  # cold-side spacecraft temperature in the 
+                                                                             # agnostic case
+                 n_sampling_max: int = 10000000,  # largest fourier mode used in noise sampling
+                 d_a_rms: Union[float, type(None)] = None,  # relative amplitude error rms
+                 d_phi_rms: Union[float, type(None)] = None,  # phase error rms
+                 d_pol_rms: Union[float, type(None)] = None,  # polarization error rms
+                 d_x_rms: Union[float, type(None)] = None,  # collector position rms, x-direction
+                 d_y_rms: Union[float, type(None)] = None,  # collector position rms, y-direction
+                 wl_resolution: int = 200,  # number of wavelength bins simulated for the thermal background
+                 flux_planet: np.ndarray = None,  # substitute flux input in ph m-2 s-1
+                 simultaneous_chopping: bool = False,  # true if the two chop states are produced at the same time
                  ):
 
         # setting simulation parameters
@@ -39,11 +73,19 @@ class Instrument(object):
         self.image_size = image_size
         self.n_sampling_rot = n_sampling_rot
         self.pink_noise_co = pink_noise_co
+        self.n_cpu = n_cpu
+        self.n_sampling_max = n_sampling_max
+        self.chopping = chopping
+        self.simultaneous_chopping = simultaneous_chopping
 
         # setting instrument parameters
         self.col_pos = col_pos
         self.phi = phase_response
         self.phi_r = phase_response_chop
+        self.diameter_ap = diameter_ap
+
+        self.throughput = throughput
+        self.flux_division = flux_division
 
         self.R = None  # response function R
         self.bl_x = None  # baseline matrix in x-direction (i.e. x_jk in Lay2004)
@@ -51,16 +93,46 @@ class Instrument(object):
 
         self.t_rot = t_rot
         self.pix_per_wl = pix_per_wl
+        self.detector_dark_current = detector_dark_current
+        self.dark_current_pix = dark_current_pix
+        self.detector_thermal = detector_thermal
+        self.det_temp = det_temp
+        self.wl_resolution = wl_resolution
+
+        self.magnification = magnification
+        self.f_number = f_number
+        self.secondary_primary_ratio = secondary_primary_ratio
+        self.primary_temp = primary_temp
+        self.primary_emmisivity = primary_emissivity
+        
+        self.agnostic_mode = agnostic_mode
+        self.eps_cold = eps_cold
+        self.eps_hot = eps_hot
+        self.eps_white = eps_white
+        self.agnostic_spacecraft_temp = agnostic_spacecraft_temp
+
+        self.rms_mode = rms_mode
+        self.d_a_rms = d_a_rms
+        self.d_phi_rms = d_phi_rms
+        self.d_pol_rms = d_pol_rms
+        self.d_x_rms = d_x_rms
+        self.d_y_rms = d_y_rms
 
         # setting source parameters
         self.dist_star = dist_star
         self.radius_star = radius_star
+        self.temp_star = temp_star
+        self.lat_star = lat_star
+        self.l_sun = l_sun
+        self.z = z
+        self.temp_planet = temp_planet
+        self.radius_planet = radius_planet
+        self.separation_planet = separation_planet
+        self.flux_planet = flux_planet
         self.flux_star = None
         self.b_star = None
         self.db_star_dx = None
         self.db_star_dy = None
-
-        self.flux_planet = None
 
         self.flux_localzodi = None
 
@@ -132,8 +204,12 @@ class Instrument(object):
                                                 'pn_lz',  # localzodi leakage
                                                 'pn_dc',  # dark current
                                                 'pn_tbd',  # thermal background detector
+                                                'pn_tbpm',  # thermal background primary mirror
                                                 'pn_pa',  # polarization angle
                                                 'pn_snfl',  # stellar null floor leakage
+                                                'pn_ag_cld',  # agnostic cold instrumental photon noise
+                                                'pn_ag_ht',  # agnostic hot instrumental photon noise
+                                                'pn_ag_wht',  # agnostic white instrumental photon noise
                                                 'pn',  # photon noise
                                                 'sn_fo_a',  # first order amplitude
                                                 'sn_fo_phi',  # first order phase
@@ -146,50 +222,52 @@ class Instrument(object):
                                                 'sn_so_polpol',  # second order polarization-polarization term
                                                 'sn_so',  # systematic noise second order
                                                 'sn',  # systematic noise
+                                                'fundamental',  # fundamental noise (astrophysical)
+                                                'instrumental',  # instrumental noise
                                                 'snr'  # signal to noise ratio
                                                 ])
 
         self.photon_rates.loc['wl', 'nchop'] = self.wl_bins
         self.photon_rates.loc['wl', 'chop'] = self.wl_bins
 
+    def instrumental_parameters(self):
         # calculate some further instrumental parameters needed for Lay 2004 implementation
-        self.A = np.sqrt(np.pi * (0.5 * diameter_ap) ** 2 * throughput * flux_division)  # area term A_j
+        self.A = np.sqrt(np.pi * (0.5 * self.diameter_ap) ** 2 * self.throughput * self.flux_division)  # area term A_j
         self.num_a = len(self.A)
 
         self.bl_x = np.array([(self.col_pos[:, 0] - self.col_pos[i, 0]) for i in range(self.num_a)])
         self.bl_y = np.array([(self.col_pos[:, 1] - self.col_pos[i, 1]) for i in range(self.num_a)])
 
-        self.omega = 2 * np.pi * (wl_bins/(2. * diameter_ap))**2
+        # TODO: Factor 2 or factor 1 here?
+        self.omega = 1 * np.pi * (self.wl_bins/(2. * self.diameter_ap))**2
 
-        hfov = wl_bins / (2. * diameter_ap)
+        hfov = self.wl_bins / (2. * self.diameter_ap)
 
         hfov_mas = hfov * (3600000. * 180.) / np.pi
-        self.rad_pix = (2 * hfov) / image_size  # Radians per pixel
-        mas_pix = (2 * hfov_mas) / image_size  # mas per pixel
-        self.au_pix = mas_pix / 1e3 * dist_star  # AU per pixel
+        self.rad_pix = (2 * hfov) / self.image_size  # Radians per pixel
+        mas_pix = (2 * hfov_mas) / self.image_size  # mas per pixel
+        self.au_pix = mas_pix / 1e3 * self.dist_star  # AU per pixel
 
-        telescope_area = 4. * np.pi * (diameter_ap / 2.) ** 2
+        telescope_area = 4. * np.pi * (self.diameter_ap / 2.) ** 2
 
-        x_map = np.tile(np.array(range(0, image_size)),
-                        (image_size, 1))
+        x_map = np.tile(np.array(range(0, self.image_size)),
+                        (self.image_size, 1))
         y_map = x_map.T
-        r_square_map = ((x_map - (image_size - 1) / 2) ** 2
-                        + (y_map - (image_size - 1) / 2) ** 2)
+        r_square_map = ((x_map - (self.image_size - 1) / 2) ** 2
+                        + (y_map - (self.image_size - 1) / 2) ** 2)
         self.radius_map = np.sqrt(r_square_map)
         self.r_au = self.radius_map[np.newaxis, :, :] * self.au_pix[:, np.newaxis, np.newaxis]
 
-    def create_star(self,
-                    temp_star: float,  # temperature of the host star in Kelvin
-                    ) -> None:
+    def create_star(self) -> None:
         self.flux_star = black_body(mode='star',
                                     bins=self.wl_bins,
                                     width=self.wl_bin_widths,
-                                    temp=temp_star,
+                                    temp=self.temp_star,
                                     radius=self.radius_star,
                                     distance=self.dist_star)
 
-        # angular extend of the star disk in rad
-        ang_star = self.radius_star * 0.00465 / self.dist_star * np.pi / (180 * 3600)
+        # angular extend of the star disk in rad divided by 2 to get radius
+        ang_star = self.radius_star * 0.00465 / self.dist_star * np.pi / (180 * 3600) / 2
         bl_mat = (self.bl_x ** 2 + self.bl_y ** 2) ** 0.5
         self.b_star = np.nan_to_num(
             np.divide(
@@ -219,26 +297,20 @@ class Instrument(object):
                 / (a[:, np.newaxis] * bl_mat[np.newaxis, j, :]))
              for j in range(self.num_a)])), 0, 1)
 
-    def create_planet(self,
-                      temp_planet: float,  # planet temperature in Kelvin
-                      radius_planet: float,  # planet radius in earth radii
-                      flux_planet: np.ndarray = None,  # substitute flux input in ph m-2 s-1
-                      ) -> None:
-        if flux_planet is None:
+    def create_planet(self) -> None:
+        if self.flux_planet is None:
             self.flux_planet = black_body(mode='planet',
                                           bins=self.wl_bins,
                                           width=self.wl_bin_widths,
-                                          temp=temp_planet,
-                                          radius=radius_planet,
+                                          temp=self.temp_planet,
+                                          radius=self.radius_planet,
                                           distance=self.dist_star)
         else:
-            self.flux_planet = flux_planet
+            self.flux_planet = self.flux_planet
 
-    def create_localzodi(self,
-                         lat_star: float,  # ecliptic latitude of the target star
-                         ) -> None:
+    def create_localzodi(self) -> None:
         long = 3 / 4 * np.pi
-        lat = lat_star
+        lat = self.lat_star
 
         radius_sun_au = 0.00465047  # in AU
         tau = 4e-8
@@ -261,14 +333,11 @@ class Instrument(object):
              + (0.6 * (self.wl_bins / 11e-6) ** (-0.4) * np.cos(lat)) ** 2)
         )
 
-    def create_exozodi(self,
-                       l_sun: float,  # stellar luminosity in solar luminosities
-                       z: float,  # zodi level: the exozodi dust is z-times denser than the localzodi dust
-                       ) -> None:
+    def create_exozodi(self) -> None:
         # calculate the parameters required by Kennedy2015
         alpha = 0.34
-        r_in = 0.034422617777777775 * np.sqrt(l_sun)
-        r_0 = np.sqrt(l_sun)
+        r_in = 0.034422617777777775 * np.sqrt(self.l_sun)
+        r_0 = np.sqrt(self.l_sun)
         sigma_zero = 7.11889e-8  # Sigma_{m,0} from Kennedy+2015 (doi:10.1088/0067-0049/216/2/23)
 
         # identify all pixels where the radius is larges than the inner radius by Kennedy+2015
@@ -277,11 +346,11 @@ class Instrument(object):
 
         # calculate the temperature at all pixel positions according to Kennedy2015 Eq. 2
         temp_map = np.where(r_cond,
-                            278.3 * (l_sun ** 0.25) / np.sqrt(self.r_au), 0)
+                            278.3 * (self.l_sun ** 0.25) / np.sqrt(self.r_au), 0)
 
         # calculate the Sigma (Eq. 3) in Kennedy2015 and set everything inside the inner radius to 0
         sigma = np.where(r_cond,
-                         sigma_zero * z *
+                         sigma_zero * self.z *
                          (self.r_au / r_0) ** (-alpha), 0)
 
         # get the black body radiation emitted by the interexoplanetary dust
@@ -449,10 +518,8 @@ class Instrument(object):
         self.c_phiphi = self.c_phiphi_star + self.c_phiphi_ez
         self.c_thetatheta = self.c_thetatheta_star
 
-    def planet_signal(self,
-                      separation_planet: float,  # separation of target planet from host star in AU
-                      ) -> None:
-        theta = separation_planet * 1.496e11 / (self.dist_star * 3.086e16)  # theta_x/y in Fig. 1
+    def planet_signal(self) -> None:
+        theta = self.separation_planet * 1.496e11 / (self.dist_star * 3.086e16)  # theta_x/y in Fig. 1
         self.phi_rot = np.linspace(0, 2 * np.pi, self.n_sampling_rot)
         self.theta_x = -theta * np.cos(self.phi_rot)
         self.theta_y = theta * np.sin(self.phi_rot)
@@ -486,7 +553,7 @@ class Instrument(object):
         # creation of template function
         # removal of even components and DC
         nfft_odd = nfft
-        nfft_odd[:, :2] = 0
+        nfft_odd[:, ::2] = 0
 
         # transform back into time domain
         self.planet_template = np.zeros((self.wl_bins.shape[0], len(self.phi_rot)))
@@ -524,7 +591,10 @@ class Instrument(object):
                  for j in range(self.num_a)]).sum(axis=0)
              for l in range(len(self.phi_rot))]), 0, 1)
 
-        self.n_planet_chop = 0.5 * (self.n_planet - self.n_planet_r)
+        self.n_planet_chop = (self.n_planet - self.n_planet_r)
+
+        if not self.simultaneous_chopping:
+            self.n_planet_chop *= 0.5
 
         # Fourier transform of planet signal equivalent to Eq (33)
         nf_chop = rfft(self.n_planet_chop)
@@ -534,7 +604,7 @@ class Instrument(object):
         # creation of template function
         # removal of even components and DC
         nfft_odd_chop = nfft_chop
-        nfft_odd_chop[:, :2] = 0
+        nfft_odd_chop[:, ::2] = 0
 
         # transform back into time domain
         self.planet_template_chop = np.zeros((self.wl_bins.shape[0], len(self.phi_rot)))
@@ -572,59 +642,104 @@ class Instrument(object):
             for j in range(self.num_a)]).sum(axis=0)
         self.photon_rates.loc['pn_ez', 'nchop'] = np.sqrt(n_0_ez / self.t_rot)
 
-    def pn_dark_current(self,
-                        detector: str,
-                        dark_current_pix: Union[float, type(None)],
-                        ) -> None:
-        if detector == 'MIRI':
-            dark_current_pix = 0.2
-            self.photon_rates.loc['pn_dc', 'nchop'] = (np.sqrt(dark_current_pix * self.pix_per_wl)
+    def pn_dark_current(self) -> None:
+        if self.detector_dark_current == 'MIRI':
+            self.dark_current_pix = 0.2
+            self.photon_rates.loc['pn_dc', 'nchop'] = (np.sqrt(self.dark_current_pix * self.pix_per_wl)
                                                        * np.ones((self.wl_bins.shape[0])))
-        elif detector == 'manual':
-            if dark_current_pix == None:
+        elif self.detector_dark_current == 'manual':
+            if self.dark_current_pix == None:
                 raise ValueError('Dark current per pixel needs to be specified in manual mode')
-            self.photon_rates.loc['pn_dc', 'nchop'] = (np.sqrt(dark_current_pix * self.pix_per_wl)
+            self.photon_rates.loc['pn_dc', 'nchop'] = (np.sqrt(self.dark_current_pix * self.pix_per_wl)
                                                        * np.ones((self.wl_bins.shape[0])))
         else:
             raise ValueError('Unkown detector type')
 
-    def pn_thermal_background_detector(self,
-                                       detector: str,
-                                       det_temp: float,  # temperature of the detector environment in K
-                                       wl_resolution: int = 200,  # number of wavelength bins simulated for the thermal
-                                                                  # background
-                                       ) -> None:
+    def pn_thermal_background_detector(self) -> None:
         h = 6.62607e-34
         k = 1.380649e-23
         c = 2.99792e+8
-        if detector == 'MIRI':
+        if self.detector_thermal == 'MIRI':
             # pitch - gap
             area_pixel = ((25 - 2) * 1e-6) ** 2
             det_wl_min = 5e-6
             det_wl_max = 28e-6
         else:
             raise ValueError('Unkown detector type')
-        wl_bins = np.linspace(start=det_wl_min, stop=det_wl_max, num=wl_resolution, endpoint=True)
-        B_photon = 2 * c / wl_bins ** 4 / (np.exp(h * c / (wl_bins * k * det_temp)) - 1)
+        wl_bins = np.linspace(start=det_wl_min, stop=det_wl_max, num=self.wl_resolution, endpoint=True)
+        B_photon = 2 * c / wl_bins ** 4 / (np.exp(h * c / (wl_bins * k * self.det_temp)) - 1)
         B_photon_int = np.trapz(y=B_photon, x=wl_bins)
         thermal_emission_det = 2 * np.pi * area_pixel * B_photon_int
 
         self.photon_rates.loc['pn_tbd', 'nchop'] = (np.sqrt(thermal_emission_det * self.pix_per_wl)
                                                     * np.ones((self.wl_bins.shape[0])))
 
-    def sn_nchop(self,
-                 n_cpu: int,
-                 rms_mode: str,
-                 n_sampling_max: int = 10000000,
-                 d_a_rms: Union[float, type(None)] = None,
-                 d_phi_rms: Union[float, type(None)] = None,
-                 d_pol_rms: Union[float, type(None)] = None,
-                 d_x_rms: Union[float, type(None)] = None,
-                 d_y_rms: Union[float, type(None)] = None):
+    def pn_thermal_primary_mirror(self) -> None:
+        prefactor = 4 * self.primary_emmisivity * (
+                np.pi * self.diameter_ap * self.magnification / self.f_number
+                * self.secondary_primary_ratio / (1 - self.secondary_primary_ratio)
+        ) ** 2
+        thermal_emission_primary = prefactor * black_body(mode='wavelength',
+                                                          bins=self.wl_bins,
+                                                          width=self.wl_bin_widths,
+                                                          temp=self.primary_temp)
+        self.photon_rates.loc['pn_tbpm', 'nchop'] = np.sqrt(thermal_emission_primary)
+        
+    def pn_agnostic(self) -> None:
+        if (self.eps_white is None) or (self.eps_cold is None) or (self.eps_hot is None):
+            raise ValueError('Agnostic scaling variables need to be specified in agnostic mode')
+
+        self.photon_rates.loc['pn_ag_ht', 'nchop'] = (self.eps_hot * 0.342 * self.diameter_ap ** 2
+                                                      * black_body(mode='wavelength',
+                                                                   bins=self.wl_bins,
+                                                                   width=self.wl_bin_widths,
+                                                                   temp=self.temp_star)
+                                                      / 4 / black_body(mode='wavelength',
+                                                                       bins=np.array((0.5e-6)),
+                                                                       width=np.array((0.05e-6)),
+                                                                       temp=self.temp_star)
+                                                      )
+
+        self.photon_rates.loc['pn_ag_cld', 'nchop'] = (self.eps_cold * 0.947 * self.diameter_ap ** 2
+                                                       * black_body(mode='wavelength',
+                                                                    bins=self.wl_bins,
+                                                                    width=self.wl_bin_widths,
+                                                                    temp=self.agnostic_spacecraft_temp)
+                                                       / 4 / black_body(mode='wavelength',
+                                                                        bins=np.array((58e-6)),
+                                                                        width=np.array((0.05e-6)),
+                                                                        temp=50.)
+                                                       )
+
+        self.photon_rates.loc['pn_ag_wht', 'nchop'] = self.eps_white * np.ones_like(self.wl_bins)
+
+    def fundamental_collect(self):
+        self.photon_rates.loc['fundamental', 'nchop'] = np.sqrt(self.photon_rates.loc['pn_sgl', 'nchop'] ** 2
+                                                                + self.photon_rates.loc['pn_ez', 'nchop'] ** 2
+                                                                + self.photon_rates.loc['pn_lz', 'nchop'] ** 2)
+
+        self.photon_rates.loc['snr', 'nchop'] = (self.photon_rates.loc['signal', 'nchop']
+                                                 / self.photon_rates.loc['fundamental', 'nchop'])
+
+        self.photon_rates.loc['pn_sgl', 'chop'] = self.photon_rates.loc['pn_sgl', 'nchop']
+        self.photon_rates.loc['pn_ez', 'chop'] = self.photon_rates.loc['pn_ez', 'nchop']
+        self.photon_rates.loc['pn_lz', 'chop'] = self.photon_rates.loc['pn_lz', 'nchop']
+        self.photon_rates.loc['pn_dc', 'chop'] = self.photon_rates.loc['pn_dc', 'nchop']
+        self.photon_rates.loc['pn_tbd', 'chop'] = self.photon_rates.loc['pn_tbd', 'nchop']
+        self.photon_rates.loc['pn_tbpm', 'chop'] = self.photon_rates.loc['pn_tbpm', 'nchop']
+        self.photon_rates.loc['pn_ag_ht', 'chop'] = self.photon_rates.loc['pn_ag_ht', 'nchop']
+        self.photon_rates.loc['pn_ag_cld', 'chop'] = self.photon_rates.loc['pn_ag_cld', 'nchop']
+        self.photon_rates.loc['pn_ag_wht', 'chop'] = self.photon_rates.loc['pn_ag_wht', 'nchop']
+        self.photon_rates.loc['fundamental', 'chop'] = self.photon_rates.loc['fundamental', 'nchop']
+        self.photon_rates.loc['snr', 'chop'] = self.photon_rates.loc['snr', 'nchop']
+
+
+
+    def sn_nchop(self):
 
         mp_args = []
         for i in range(self.wl_bins.shape[0]):
-            mp_args.append({'rms_mode': rms_mode,
+            mp_args.append({'rms_mode': self.rms_mode,
                             'wl': self.wl_bins[i],
                             't_rot': self.t_rot,
                             'num_a': self.num_a,
@@ -639,21 +754,21 @@ class Instrument(object):
                             'c_aphi': self.c_aphi[i, :, :],
                             'c_thetatheta': self.c_thetatheta[i, :, :],
                             'template': self.planet_template[i, :],
-                            'n_sampling_max': n_sampling_max,
-                            'd_a_rms': d_a_rms,
-                            'd_phi_rms': d_phi_rms,
-                            'd_pol_rms': d_pol_rms,
-                            'd_x_rms': d_x_rms,
-                            'd_y_rms': d_y_rms,
+                            'n_sampling_max': self.n_sampling_max,
+                            'd_a_rms': self.d_a_rms,
+                            'd_phi_rms': self.d_phi_rms,
+                            'd_pol_rms': self.d_pol_rms,
+                            'd_x_rms': self.d_x_rms,
+                            'd_y_rms': self.d_y_rms,
                             'pink_noise_co': self.pink_noise_co})
-        if n_cpu == 1:
+        if self.n_cpu == 1:
             res = []
             for i in tqdm(range(self.wl_bins.shape[0])):
                 rr = instrumental_noise_single_wav_nchop(mp_args[i])
                 res.append(rr)
         else:
             # collect arguments for multiprocessing
-            pool = mp.Pool(n_cpu)
+            pool = mp.Pool(self.n_cpu)
             results = pool.map(instrumental_noise_single_wav_nchop, mp_args)
             res = []
             for wl in self.wl_bins:
@@ -667,13 +782,41 @@ class Instrument(object):
         self.photon_rates.loc['pn', 'nchop'] = np.sqrt(self.photon_rates.loc['pn_sgl', 'nchop'] ** 2
                                                        + self.photon_rates.loc['pn_ez', 'nchop'] ** 2
                                                        + self.photon_rates.loc['pn_lz', 'nchop'] ** 2
-                                                       + self.photon_rates.loc['pn_dc', 'nchop'] ** 2
-                                                       + self.photon_rates.loc['pn_tbd', 'nchop'] ** 2
                                                        + self.photon_rates.loc['pn_pa', 'nchop'] ** 2
                                                        + self.photon_rates.loc['pn_snfl', 'nchop'] ** 2)
 
+        self.photon_rates.loc['instrumental', 'nchop'] = np.sqrt(self.photon_rates.loc['sn', 'nchop'] ** 2
+                                                                 + self.photon_rates.loc['pn_pa', 'nchop'] ** 2
+                                                                 + self.photon_rates.loc['pn_snfl', 'nchop'] ** 2)
+        
+        if not self.agnostic_mode:
+            self.photon_rates.loc['pn', 'nchop'] = np.sqrt(self.photon_rates.loc['pn', 'nchop'] ** 2
+                                                           + self.photon_rates.loc['pn_dc', 'nchop'] ** 2
+                                                           + self.photon_rates.loc['pn_tbd', 'nchop'] ** 2
+                                                           + self.photon_rates.loc['pn_tbpm', 'nchop'] ** 2)
+    
+            self.photon_rates.loc['instrumental', 'nchop'] = np.sqrt(self.photon_rates.loc['instrumental', 'nchop'] ** 2
+                                                                     + self.photon_rates.loc['pn_dc', 'nchop'] ** 2
+                                                                     + self.photon_rates.loc['pn_tbd', 'nchop'] ** 2
+                                                                     + self.photon_rates.loc['pn_tbpm', 'nchop'] ** 2)
+            
+        else:
+            self.photon_rates.loc['pn', 'nchop'] = np.sqrt(self.photon_rates.loc['pn', 'nchop'] ** 2
+                                                           + self.photon_rates.loc['pn_ag_ht', 'nchop'] ** 2
+                                                           + self.photon_rates.loc['pn_ag_cld', 'nchop'] ** 2
+                                                           + self.photon_rates.loc['pn_ag_wht', 'nchop'] ** 2)
+
+            self.photon_rates.loc['instrumental', 'nchop'] = np.sqrt(self.photon_rates.loc['instrumental', 'nchop'] ** 2
+                                                                     + self.photon_rates.loc['pn_ag_ht', 'nchop'] ** 2
+                                                                     + self.photon_rates.loc['pn_ag_cld', 'nchop'] ** 2
+                                                                     + self.photon_rates.loc['pn_ag_wht', 'nchop'] ** 2)
+
         self.photon_rates.loc['noise', 'nchop'] = np.sqrt(self.photon_rates.loc['pn', 'nchop'] ** 2
                                                           + self.photon_rates.loc['sn', 'nchop'] ** 2)
+
+        self.photon_rates.loc['fundamental', 'nchop'] = np.sqrt(self.photon_rates.loc['pn_sgl', 'nchop'] ** 2
+                                                                + self.photon_rates.loc['pn_ez', 'nchop'] ** 2
+                                                                + self.photon_rates.loc['pn_lz', 'nchop'] ** 2)
 
         self.photon_rates.loc['snr', 'nchop'] = (self.photon_rates.loc['signal', 'nchop']
                                                  / self.photon_rates.loc['noise', 'nchop'])
@@ -689,14 +832,7 @@ class Instrument(object):
         for k in data[0].keys():
             self.photon_rates.loc[k, column_results] = np.array(self.photon_rates.loc[k, column_results])
 
-    def sn_chop(self,
-                n_cpu: int,
-                rms_mode: str,
-                n_sampling_max: int = 10000000,
-                d_a_rms: Union[float, type(None)] = None,
-                d_phi_rms: Union[float, type(None)] = None,
-                d_pol_rms: Union[float, type(None)] = None,
-                ):
+    def sn_chop(self):
         mp_args = []
         for i in range(self.wl_bins.shape[0]):
             mp_args.append({'A': self.A,
@@ -707,23 +843,23 @@ class Instrument(object):
                             'c_aphi': self.c_aphi[i, :, :],
                             'c_aa' : self.c_aa[i, :, :],
                             'c_phiphi': self.c_phiphi[i, :, :],
-                            'rms_mode': rms_mode,
-                            'n_sampling_max': n_sampling_max,
+                            'rms_mode': self.rms_mode,
+                            'n_sampling_max': self.n_sampling_max,
                             't_rot': self.t_rot,
-                            'd_a_rms': d_a_rms,
-                            'd_phi_rms': d_phi_rms,
-                            'd_pol_rms': d_pol_rms,
+                            'd_a_rms': self.d_a_rms,
+                            'd_phi_rms': self.d_phi_rms,
+                            'd_pol_rms': self.d_pol_rms,
                             'pink_noise_co': self.pink_noise_co,
                             'flux_star': self.flux_star[i]
                             })
-        if n_cpu == 1:
+        if self.n_cpu == 1:
             res = []
             for i in tqdm(range(self.wl_bins.shape[0])):
                 rr = instrumental_noise_single_wav_chop(mp_args[i])
                 res.append(rr)
         else:
             # collect arguments for multiprocessing
-            pool = mp.Pool(n_cpu)
+            pool = mp.Pool(self.n_cpu)
             results = pool.map(instrumental_noise_single_wav_chop, mp_args)
             res = []
             for wl in self.wl_bins:
@@ -733,23 +869,55 @@ class Instrument(object):
 
         self.save_to_results(data=res,
                              column_results='chop')
-
+        
         self.photon_rates.loc['pn_sgl', 'chop'] = self.photon_rates.loc['pn_sgl', 'nchop']
         self.photon_rates.loc['pn_ez', 'chop'] = self.photon_rates.loc['pn_ez', 'nchop']
         self.photon_rates.loc['pn_lz', 'chop'] = self.photon_rates.loc['pn_lz', 'nchop']
         self.photon_rates.loc['pn_dc', 'chop'] = self.photon_rates.loc['pn_dc', 'nchop']
         self.photon_rates.loc['pn_tbd', 'chop'] = self.photon_rates.loc['pn_tbd', 'nchop']
+        self.photon_rates.loc['pn_tbpm', 'chop'] = self.photon_rates.loc['pn_tbpm', 'nchop']
+        self.photon_rates.loc['pn_ag_ht', 'chop'] = self.photon_rates.loc['pn_ag_ht', 'nchop']
+        self.photon_rates.loc['pn_ag_cld', 'chop'] = self.photon_rates.loc['pn_ag_cld', 'nchop']
+        self.photon_rates.loc['pn_ag_wht', 'chop'] = self.photon_rates.loc['pn_ag_wht', 'nchop']
 
         self.photon_rates.loc['pn', 'chop'] = np.sqrt(self.photon_rates.loc['pn_sgl', 'chop'] ** 2
-                                                      + self.photon_rates.loc['pn_ez', 'chop'] ** 2
-                                                      + self.photon_rates.loc['pn_lz', 'chop'] ** 2
-                                                      + self.photon_rates.loc['pn_dc', 'chop'] ** 2
-                                                      + self.photon_rates.loc['pn_tbd', 'chop'] ** 2
-                                                      + self.photon_rates.loc['pn_pa', 'chop'] ** 2
-                                                      + self.photon_rates.loc['pn_snfl', 'chop'] ** 2)
+                                                       + self.photon_rates.loc['pn_ez', 'chop'] ** 2
+                                                       + self.photon_rates.loc['pn_lz', 'chop'] ** 2
+                                                       + self.photon_rates.loc['pn_pa', 'chop'] ** 2
+                                                       + self.photon_rates.loc['pn_snfl', 'chop'] ** 2)
+
+        self.photon_rates.loc['instrumental', 'chop'] = np.sqrt(self.photon_rates.loc['sn', 'chop'] ** 2
+                                                                 + self.photon_rates.loc['pn_pa', 'chop'] ** 2
+                                                                 + self.photon_rates.loc['pn_snfl', 'chop'] ** 2)
+
+        if not self.agnostic_mode:
+            self.photon_rates.loc['pn', 'chop'] = np.sqrt(self.photon_rates.loc['pn', 'chop'] ** 2
+                                                          + self.photon_rates.loc['pn_dc', 'chop'] ** 2
+                                                          + self.photon_rates.loc['pn_tbd', 'chop'] ** 2
+                                                          + self.photon_rates.loc['pn_tbpm', 'chop'] ** 2)
+
+            self.photon_rates.loc['instrumental', 'chop'] = np.sqrt(self.photon_rates.loc['instrumental', 'chop'] ** 2
+                                                                    + self.photon_rates.loc['pn_dc', 'chop'] ** 2
+                                                                    + self.photon_rates.loc['pn_tbd', 'chop'] ** 2
+                                                                    + self.photon_rates.loc['pn_tbpm', 'chop'] ** 2)
+
+        else:
+            self.photon_rates.loc['pn', 'chop'] = np.sqrt(self.photon_rates.loc['pn', 'chop'] ** 2
+                                                          + self.photon_rates.loc['pn_ag_ht', 'chop'] ** 2
+                                                          + self.photon_rates.loc['pn_ag_cld', 'chop'] ** 2
+                                                          + self.photon_rates.loc['pn_ag_wht', 'chop'] ** 2)
+
+            self.photon_rates.loc['instrumental', 'chop'] = np.sqrt(self.photon_rates.loc['instrumental', 'chop'] ** 2
+                                                                    + self.photon_rates.loc['pn_ag_ht', 'chop'] ** 2
+                                                                    + self.photon_rates.loc['pn_ag_cld', 'chop'] ** 2
+                                                                    + self.photon_rates.loc['pn_ag_wht', 'chop'] ** 2)
 
         self.photon_rates.loc['noise', 'chop'] = np.sqrt(self.photon_rates.loc['pn', 'chop'] ** 2
                                                          + self.photon_rates.loc['sn', 'chop'] ** 2)
+
+        self.photon_rates.loc['fundamental', 'chop'] = np.sqrt(self.photon_rates.loc['pn_sgl', 'chop'] ** 2
+                                                               + self.photon_rates.loc['pn_ez', 'chop'] ** 2
+                                                               + self.photon_rates.loc['pn_lz', 'chop'] ** 2)
 
         self.photon_rates.loc['snr', 'chop'] = (self.photon_rates.loc['signal', 'chop']
                                                 / self.photon_rates.loc['noise', 'chop'])
@@ -763,83 +931,33 @@ class Instrument(object):
                     self.photon_rates.loc[i, 'chop'] = self.photon_rates.loc[i, 'chop'][0]
 
 
-    def run_multiwav(self,
-                     temp_star,
-                     temp_planet,
-                     radius_planet,
-                     lat_star,
-                     l_sun,
-                     z,
-                     dark_current_pix,
-                     det_temp,
-                     rms_mode,
-                     n_cpu,
-                     separation_planet) -> None:
-        self.create_star(temp_star=temp_star)
-        self.create_planet(temp_planet=temp_planet,
-                           radius_planet=radius_planet)
-        self.create_localzodi(lat_star=lat_star)
-        self.create_exozodi(l_sun=l_sun,
-                            z=z)
+    def run(self) -> None:
+        self.instrumental_parameters()
 
-        self.response()
+        self.create_star()
+        self.create_planet()
+        self.create_localzodi()
+        self.create_exozodi()
+
         self.sensitivity_coefficients()
 
-        self.planet_signal(separation_planet=separation_planet)
+        self.planet_signal()
 
         self.fundamental_noise()
-        self.pn_dark_current(detector='manual',
-                             dark_current_pix=dark_current_pix)
-        self.pn_thermal_background_detector(detector='MIRI',
-                                            det_temp=det_temp)
 
-        self.sn_nchop(n_cpu=n_cpu,
-                      rms_mode=rms_mode)
+        if self.agnostic_mode:
+            self.pn_agnostic()
+        else:
+            self.pn_dark_current()
+            self.pn_thermal_background_detector()
+            self.pn_thermal_primary_mirror()
 
-        self.sn_chop(n_cpu=n_cpu,
-                     rms_mode=rms_mode)
-
-        self.cleanup()
-
-    def run_singlewav_chop(self,
-                           temp_star,
-                           temp_planet,
-                           radius_planet,
-                           lat_star,
-                           l_sun,
-                           z,
-                           dark_current_pix,
-                           det_temp,
-                           rms_mode,
-                           n_cpu,
-                           separation_planet,
-                           d_a_rms,
-                           d_phi_rms,
-                           d_pol_rms):
-
-        self.create_star(temp_star=temp_star)
-        self.create_planet(temp_planet=temp_planet,
-                           radius_planet=radius_planet)
-        self.create_localzodi(lat_star=lat_star)
-        self.create_exozodi(l_sun=l_sun,
-                            z=z)
-
-        self.response()
-        self.sensitivity_coefficients()
-
-        self.planet_signal(separation_planet=separation_planet)
-
-        self.fundamental_noise()
-        self.pn_dark_current(detector='manual',
-                             dark_current_pix=dark_current_pix)
-        self.pn_thermal_background_detector(detector='MIRI',
-                                            det_temp=det_temp)
-
-        self.sn_chop(n_cpu=n_cpu,
-                     rms_mode=rms_mode,
-                     d_a_rms=d_a_rms,
-                     d_phi_rms=d_phi_rms,
-                     d_pol_rms=d_pol_rms)
+        if (self.chopping == 'nchop') or (self.chopping == 'both'):
+            self.sn_nchop()
+        if (self.chopping == 'chop') or (self.chopping == 'both'):
+            self.sn_chop()
+        if self.chopping not in ['chop', 'nchop', 'both']:
+            raise ValueError('Invalid chopping selection')
 
         self.cleanup()
 
