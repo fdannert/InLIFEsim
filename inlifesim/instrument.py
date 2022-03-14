@@ -5,7 +5,6 @@ import numpy as np
 from scipy.special import jn, spherical_jn
 from scipy.fft import fft, fftfreq, fftshift, rfft
 import pandas as pd
-from tqdm import tqdm
 
 from inlifesim.util import black_body, find_nearest_idx
 
@@ -17,6 +16,7 @@ class Instrument(object):
     def __init__(self,
                  wl_bins: np.ndarray,  # wavelength bins center position in m
                  wl_bin_widths: np.ndarray,  # wavelength bin widhts in m
+                 integration_time: float,  # integration time in s
                  image_size: int,  # size of image used to simulate exozodi in pix
                  diameter_ap: float,  # diameter of the primary mirrors in m
                  flux_division: np.ndarray,  # division of the flux between the primary mirrors, e.g. in baseline case
@@ -77,6 +77,7 @@ class Instrument(object):
         self.n_sampling_max = n_sampling_max
         self.chopping = chopping
         self.simultaneous_chopping = simultaneous_chopping
+        self.t_int = integration_time
 
         # setting instrument parameters
         self.col_pos = col_pos
@@ -230,6 +231,8 @@ class Instrument(object):
         self.photon_rates.loc['wl', 'nchop'] = self.wl_bins
         self.photon_rates.loc['wl', 'chop'] = self.wl_bins
 
+        np.seterr(invalid='ignore')
+
     def instrumental_parameters(self):
         # calculate some further instrumental parameters needed for Lay 2004 implementation
         self.A = np.sqrt(np.pi * (0.5 * self.diameter_ap) ** 2 * self.throughput * self.flux_division)  # area term A_j
@@ -267,7 +270,7 @@ class Instrument(object):
                                     distance=self.dist_star)
 
         # angular extend of the star disk in rad divided by 2 to get radius
-        ang_star = self.radius_star * 0.00465 / self.dist_star * np.pi / (180 * 3600) / 2
+        ang_star = self.radius_star * 0.00465 / self.dist_star * np.pi / (180 * 3600)
         bl_mat = (self.bl_x ** 2 + self.bl_y ** 2) ** 0.5
         self.b_star = np.nan_to_num(
             np.divide(
@@ -297,8 +300,9 @@ class Instrument(object):
                 / (a[:, np.newaxis] * bl_mat[np.newaxis, j, :]))
              for j in range(self.num_a)])), 0, 1)
 
-    def create_planet(self) -> None:
-        if self.flux_planet is None:
+    def create_planet(self,
+                      force: bool = False) -> None:
+        if (self.flux_planet is None) or force:
             self.flux_planet = black_body(mode='planet',
                                           bins=self.wl_bins,
                                           width=self.wl_bin_widths,
@@ -365,7 +369,9 @@ class Instrument(object):
 
         sampling_rate_rad = self.rad_pix
 
-        ez_fft = np.fft.fftshift(np.fft.fft2(flux_map_exozodi))
+        # TODO: Check the transformation coefficients here
+        ez_fft = np.fft.fftshift(np.fft.fft2(flux_map_exozodi)) / 2
+        # ez_fft = np.fft.fftshift(np.fft.fft2(flux_map_exozodi)) / np.pi
         r_rad_fft = np.fft.fftshift(np.fft.fftfreq(self.image_size, sampling_rate_rad[:, np.newaxis]))
 
         bl_x_fft = 2 * np.pi * self.bl_x[np.newaxis, :, :] / self.wl_bins[:, np.newaxis, np.newaxis]
@@ -379,10 +385,10 @@ class Instrument(object):
                 for j in range(bl_x_fft.shape[2]):
                     bl_x_pix[k, i, j] = find_nearest_idx(r_rad_fft[k, :], bl_x_fft[k, i, j])
                     bl_y_pix[k, i, j] = find_nearest_idx(r_rad_fft[k, :], bl_y_fft[k, i, j])
-                    self.b_ez[k, i, j] = ez_fft[k,
-                                           int(find_nearest_idx(r_rad_fft[k, :], bl_x_fft[k, i, j])),
-                                           int(find_nearest_idx(r_rad_fft[k, :], bl_y_fft[k, i, j]))
-                    ]
+                    self.b_ez[k, i, j] = np.real(ez_fft[k,
+                                                        int(find_nearest_idx(r_rad_fft[k, :], bl_x_fft[k, i, j])),
+                                                        int(find_nearest_idx(r_rad_fft[k, :], bl_y_fft[k, i, j]))
+                                                 ])
 
     def response(self) -> None:
         theta_x = np.linspace(-1e-6, 1e-6, 200)[np.newaxis, :]
@@ -502,10 +508,12 @@ class Instrument(object):
     def localzodi_leakage(self) -> None:
         self.c_a_lz = 2 * self.flux_localzodi[:, np.newaxis] * self.A[np.newaxis, :] ** 2 * self.omega[:, np.newaxis]
 
-    def sensitivity_coefficients(self) -> None:
-        self.stellar_leakage()
+    def sensitivity_coefficients(self,
+                                 exozodi_only: bool = False) -> None:
         self.exozodi_leakage()
-        self.localzodi_leakage()
+        if not exozodi_only:
+            self.stellar_leakage()
+            self.localzodi_leakage()
 
         self.c_a = self.c_a_star + self.c_a_ez + self.c_a_lz
         self.c_phi = self.c_phi_star + self.c_phi_ez
@@ -570,7 +578,7 @@ class Instrument(object):
 
         self.photon_rates.loc['signal', 'nchop'] = np.abs(
             (time_per_bin * self.planet_template * self.n_planet).sum(axis=1)
-        ) / self.t_rot
+        ) / self.t_rot * self.t_int
 
         # chopped planet signal
         self.n_planet_r = np.swapaxes(np.array(
@@ -621,26 +629,29 @@ class Instrument(object):
 
         self.photon_rates.loc['signal', 'chop'] = np.abs(
             (time_per_bin * self.planet_template_chop * self.n_planet_chop).sum(axis=1)
-        ) / self.t_rot
+        ) / self.t_rot * self.t_int
 
 
-    def fundamental_noise(self) -> None:
-        n_0_star = np.array([
-            np.array([self.A[j] * self.A[k] * np.cos(self.phi[j] - self.phi[k]) * self.b_star[:, j, k]
-                      for k in range(self.num_a)]).sum(axis=0)
-            for j in range(self.num_a)]).sum(axis=0)
-        self.photon_rates.loc['pn_sgl', 'nchop'] = np.sqrt(n_0_star / self.t_rot)
+    def fundamental_noise(self,
+                          exozodi_only: bool = False) -> None:
+        if not exozodi_only:
+            n_0_star = np.array([
+                np.array([self.A[j] * self.A[k] * np.cos(self.phi[j] - self.phi[k]) * self.b_star[:, j, k]
+                          for k in range(self.num_a)]).sum(axis=0)
+                for j in range(self.num_a)]).sum(axis=0)
+            self.photon_rates.loc['pn_sgl', 'nchop'] = np.sqrt(n_0_star * self.t_int)
 
-        n_0_lz = (
-                self.flux_localzodi[:, np.newaxis] * self.A[np.newaxis, :] ** 2 * self.omega[:, np.newaxis]
-        ).sum(axis=1)
-        self.photon_rates.loc['pn_lz', 'nchop'] = np.sqrt(n_0_lz / self.t_rot)
+            n_0_lz = (
+                    self.flux_localzodi[:, np.newaxis] * self.A[np.newaxis, :] ** 2 * self.omega[:, np.newaxis]
+            ).sum(axis=1)
+            self.photon_rates.loc['pn_lz', 'nchop'] = np.sqrt(n_0_lz * self.t_int)
+
 
         n_0_ez = np.array([
             np.array([self.A[j] * self.A[k] * np.cos(self.phi[j] - self.phi[k]) * self.b_ez[:, j, k]
                       for k in range(self.num_a)]).sum(axis=0)
             for j in range(self.num_a)]).sum(axis=0)
-        self.photon_rates.loc['pn_ez', 'nchop'] = np.sqrt(n_0_ez / self.t_rot)
+        self.photon_rates.loc['pn_ez', 'nchop'] = np.sqrt(n_0_ez * self.t_int)
 
     def pn_dark_current(self) -> None:
         if self.detector_dark_current == 'MIRI':
@@ -715,8 +726,12 @@ class Instrument(object):
 
     def fundamental_collect(self):
         self.photon_rates.loc['fundamental', 'nchop'] = np.sqrt(self.photon_rates.loc['pn_sgl', 'nchop'] ** 2
-                                                                + self.photon_rates.loc['pn_ez', 'nchop'] ** 2
-                                                                + self.photon_rates.loc['pn_lz', 'nchop'] ** 2)
+                                                                 + self.photon_rates.loc['pn_ez', 'nchop'] ** 2
+                                                                 + self.photon_rates.loc['pn_lz', 'nchop'] ** 2)
+
+        # because of the incoherent combination of the final outputs, see Mugnier 2006
+        if self.simultaneous_chopping:
+            self.photon_rates.loc['fundamental', 'chop'] *= np.sqrt(2)
 
         self.photon_rates.loc['snr', 'nchop'] = (self.photon_rates.loc['signal', 'nchop']
                                                  / self.photon_rates.loc['fundamental', 'nchop'])
@@ -733,8 +748,6 @@ class Instrument(object):
         self.photon_rates.loc['fundamental', 'chop'] = self.photon_rates.loc['fundamental', 'nchop']
         self.photon_rates.loc['snr', 'chop'] = self.photon_rates.loc['snr', 'nchop']
 
-
-
     def sn_nchop(self):
 
         mp_args = []
@@ -742,6 +755,7 @@ class Instrument(object):
             mp_args.append({'rms_mode': self.rms_mode,
                             'wl': self.wl_bins[i],
                             't_rot': self.t_rot,
+                            't_int': self.t_int,
                             'num_a': self.num_a,
                             'flux_star': self.flux_star[i],
                             'A': self.A,
@@ -763,7 +777,7 @@ class Instrument(object):
                             'pink_noise_co': self.pink_noise_co})
         if self.n_cpu == 1:
             res = []
-            for i in tqdm(range(self.wl_bins.shape[0])):
+            for i in range(self.wl_bins.shape[0]):
                 rr = instrumental_noise_single_wav_nchop(mp_args[i])
                 res.append(rr)
         else:
@@ -779,11 +793,11 @@ class Instrument(object):
         self.save_to_results(data=res,
                              column_results='nchop')
 
-        self.photon_rates.loc['pn', 'nchop'] = np.sqrt(self.photon_rates.loc['pn_sgl', 'nchop'] ** 2
+        self.photon_rates.loc['pn', 'nchop'] = np.sqrt((self.photon_rates.loc['pn_sgl', 'nchop'] ** 2
                                                        + self.photon_rates.loc['pn_ez', 'nchop'] ** 2
                                                        + self.photon_rates.loc['pn_lz', 'nchop'] ** 2
                                                        + self.photon_rates.loc['pn_pa', 'nchop'] ** 2
-                                                       + self.photon_rates.loc['pn_snfl', 'nchop'] ** 2)
+                                                       + self.photon_rates.loc['pn_snfl', 'nchop'] ** 2))
 
         self.photon_rates.loc['instrumental', 'nchop'] = np.sqrt(self.photon_rates.loc['sn', 'nchop'] ** 2
                                                                  + self.photon_rates.loc['pn_pa', 'nchop'] ** 2
@@ -818,6 +832,12 @@ class Instrument(object):
                                                                 + self.photon_rates.loc['pn_ez', 'nchop'] ** 2
                                                                 + self.photon_rates.loc['pn_lz', 'nchop'] ** 2)
 
+        # because of the incoherent combination of the final outputs, see Mugnier 2006
+        if self.simultaneous_chopping:
+            self.photon_rates.loc['noise', 'chop'] *= np.sqrt(2)
+            self.photon_rates.loc['fundamental', 'chop'] *= np.sqrt(2)
+            self.photon_rates.loc['instrumental', 'chop'] *= np.sqrt(2)
+
         self.photon_rates.loc['snr', 'nchop'] = (self.photon_rates.loc['signal', 'nchop']
                                                  / self.photon_rates.loc['noise', 'nchop'])
 
@@ -846,6 +866,7 @@ class Instrument(object):
                             'rms_mode': self.rms_mode,
                             'n_sampling_max': self.n_sampling_max,
                             't_rot': self.t_rot,
+                            't_int': self.t_int,
                             'd_a_rms': self.d_a_rms,
                             'd_phi_rms': self.d_phi_rms,
                             'd_pol_rms': self.d_pol_rms,
@@ -854,7 +875,7 @@ class Instrument(object):
                             })
         if self.n_cpu == 1:
             res = []
-            for i in tqdm(range(self.wl_bins.shape[0])):
+            for i in range(self.wl_bins.shape[0]):
                 rr = instrumental_noise_single_wav_chop(mp_args[i])
                 res.append(rr)
         else:
@@ -918,6 +939,12 @@ class Instrument(object):
         self.photon_rates.loc['fundamental', 'chop'] = np.sqrt(self.photon_rates.loc['pn_sgl', 'chop'] ** 2
                                                                + self.photon_rates.loc['pn_ez', 'chop'] ** 2
                                                                + self.photon_rates.loc['pn_lz', 'chop'] ** 2)
+
+        # because of the incoherent combination of the final outputs, see Mugnier 2006
+        if self.simultaneous_chopping:
+            self.photon_rates.loc['noise', 'chop'] *= np.sqrt(2)
+            self.photon_rates.loc['fundamental', 'chop'] *= np.sqrt(2)
+            self.photon_rates.loc['instrumental', 'chop'] *= np.sqrt(2)
 
         self.photon_rates.loc['snr', 'chop'] = (self.photon_rates.loc['signal', 'chop']
                                                 / self.photon_rates.loc['noise', 'chop'])
@@ -984,6 +1011,7 @@ def instrumental_noise_single_wav_nchop(mp_arg) -> dict:
     d_x_rms = mp_arg['d_x_rms']
     d_y_rms = mp_arg['d_y_rms']
     t_rot = mp_arg['t_rot']
+    t_int = mp_arg['t_int']
     pink_noise_co = mp_arg['pink_noise_co']
 
     if rms_mode == 'lay':
@@ -1055,9 +1083,9 @@ def instrumental_noise_single_wav_nchop(mp_arg) -> dict:
     noise_nchop = {'wl': wl}
 
     dn_pol = (flux_star * A ** 2 * avg_d_pol_2).sum()
-    noise_nchop['pn_pa'] = np.sqrt(dn_pol / t_rot)
+    noise_nchop['pn_pa'] = np.sqrt(dn_pol * t_int)
     dn_null_floor = np.array([c_aa[j, j] * avg_d_a_2[j] + c_phiphi[j, j] * avg_d_phi_2 for j in range(num_a)]).sum()
-    noise_nchop['pn_snfl'] = np.sqrt(dn_null_floor / t_rot)
+    noise_nchop['pn_snfl'] = np.sqrt(dn_null_floor * t_int)
 
     template_fft = rfft(template)
     template_fft = template_fft / len(template)
@@ -1068,13 +1096,13 @@ def instrumental_noise_single_wav_nchop(mp_arg) -> dict:
     d_x_j_hat_2 = np.array([(np.abs(template_fft[:len(d_x_b_2)]) ** 2 * d_x_b_2).sum() for j in range(num_a)])
     d_y_j_hat_2 = np.array([(np.abs(template_fft[:len(d_y_b_2)]) ** 2 * d_y_b_2).sum() for j in range(num_a)])
 
-    noise_nchop['sn_fo_a'] = np.sqrt((c_a ** 2 * d_a_j_hat_2).sum())
+    noise_nchop['sn_fo_a'] = np.sqrt((c_a ** 2 * d_a_j_hat_2).sum() * t_int ** 2)
 
-    noise_nchop['sn_fo_phi'] = np.sqrt((c_phi ** 2 * d_phi_j_hat_2).sum())
+    noise_nchop['sn_fo_phi'] = np.sqrt((c_phi ** 2 * d_phi_j_hat_2).sum() * t_int ** 2)
 
-    noise_nchop['sn_fo_x'] = np.sqrt((c_x ** 2 * d_x_j_hat_2).sum())
+    noise_nchop['sn_fo_x'] = np.sqrt((c_x ** 2 * d_x_j_hat_2).sum() * t_int ** 2)
 
-    noise_nchop['sn_fo_y'] = np.sqrt((c_y ** 2 * d_y_j_hat_2).sum())
+    noise_nchop['sn_fo_y'] = np.sqrt((c_y ** 2 * d_y_j_hat_2).sum() * t_int ** 2)
 
     noise_nchop['sn_fo'] = np.sqrt(noise_nchop['sn_fo_a'] ** 2
                                          + noise_nchop['sn_fo_phi'] ** 2
@@ -1141,13 +1169,13 @@ def instrumental_noise_single_wav_nchop(mp_arg) -> dict:
     d_pol_hat_2 = np.ones((num_a, num_a)) * d_pol_j_pol_k_hat_2
     np.fill_diagonal(d_pol_hat_2, d_pol_j_hat_2_2)
 
-    noise_nchop['sn_so_aa'] = np.sqrt(np.sum(c_aa ** 2 * d_a_hat_2))
+    noise_nchop['sn_so_aa'] = np.sqrt(np.sum(c_aa ** 2 * d_a_hat_2) * t_int ** 2)
 
-    noise_nchop['sn_so_phiphi'] = np.sqrt(np.sum(c_phiphi ** 2 * d_phi_hat_2))
+    noise_nchop['sn_so_phiphi'] = np.sqrt(np.sum(c_phiphi ** 2 * d_phi_hat_2) * t_int ** 2)
 
-    noise_nchop['sn_so_aphi'] = np.sqrt(np.sum(c_aphi ** 2 * d_a_phi_hat_2))
+    noise_nchop['sn_so_aphi'] = np.sqrt(np.sum(c_aphi ** 2 * d_a_phi_hat_2) * t_int ** 2)
 
-    noise_nchop['sn_so_polpol'] = np.sqrt(np.sum(c_thetatheta ** 2 * d_pol_hat_2))
+    noise_nchop['sn_so_polpol'] = np.sqrt(np.sum(c_thetatheta ** 2 * d_pol_hat_2) * t_int ** 2)
 
     noise_nchop['sn_so'] = np.sqrt(
         noise_nchop['sn_so_aa'] ** 2
@@ -1173,6 +1201,7 @@ def instrumental_noise_single_wav_chop(mp_arg) -> dict:
     rms_mode = mp_arg['rms_mode']
     n_sampling_max = mp_arg['n_sampling_max']
     t_rot = mp_arg['t_rot']
+    t_int = mp_arg['t_int']
     d_a_rms = mp_arg['d_a_rms']
     d_phi_rms = mp_arg['d_phi_rms']
     d_pol_rms = mp_arg['d_pol_rms']
@@ -1236,14 +1265,15 @@ def instrumental_noise_single_wav_chop(mp_arg) -> dict:
     noise_chop = {'wl': wl}
 
     dn_pol = (flux_star * A ** 2 * avg_d_pol_2).sum()
-    noise_chop['pn_pa'] = np.sqrt(dn_pol / t_rot)
+    noise_chop['pn_pa'] = np.sqrt(dn_pol * t_int)
     dn_null_floor = np.array([c_aa[j, j] * avg_d_a_2[j] + c_phiphi[j, j] * avg_d_phi_2 for j in range(num_a)]).sum()
-    noise_chop['pn_snfl'] = np.sqrt(dn_null_floor / t_rot)
+    noise_chop['pn_snfl'] = np.sqrt(dn_null_floor * t_int)
 
     # first order dphi
     d_phi_j_hat_2_chop = np.array([(np.abs(planet_template_c_fft) ** 2
                                     * d_phi_b_2[:len(planet_template_c_fft)]).sum() for j in range(num_a)])
-    noise_chop['sn_fo_phi'] = np.sqrt((c_phi ** 2 * d_phi_j_hat_2_chop).sum())
+    noise_chop['sn_fo_phi'] = np.sqrt((c_phi ** 2 * d_phi_j_hat_2_chop).sum() * t_int ** 2)
+
 
     # second order dadphi
     nt = len(planet_template_c_fft)
@@ -1258,7 +1288,7 @@ def instrumental_noise_single_wav_chop(mp_arg) -> dict:
                 0] / 2) * np.abs(planet_template_c_fft[0]) ** 2) for j in range(1)])[0]
     d_a_phi_hat_2_chop = np.ones((num_a, num_a)) * d_a_j_phi_k_hat_2_chop
 
-    noise_chop['sn_so_aphi'] = np.sqrt(np.sum(c_aphi ** 2 * d_a_phi_hat_2_chop))
+    noise_chop['sn_so_aphi'] = np.sqrt(np.sum(c_aphi ** 2 * d_a_phi_hat_2_chop) * t_int ** 2)
 
     noise_chop['sn_fo'] = noise_chop['sn_fo_phi']
     noise_chop['sn_so'] = noise_chop['sn_so_aphi']

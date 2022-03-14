@@ -3,6 +3,7 @@ import numpy as np
 import inlifesim as ils
 
 def compare_to_lay():
+    integration_time = 50000
     wl_bins = np.array((10e-6, ))
     wl_bin_widths = np.array((0.5e-6, ))
 
@@ -17,9 +18,9 @@ def compare_to_lay():
                           col_pos=np.array(((-30, 0), (-10, 0), (10, 0), (30, 0))),
                           phase_response=np.array((0, np.pi / 2, np.pi, 3 * np.pi / 2)),
                           phase_response_chop=-np.array((0, np.pi / 2, np.pi, 3 * np.pi / 2)),
-                          t_rot=50000,
+                          t_rot=integration_time,
                           pix_per_wl=2.2,
-                          n_sampling_rot=360,
+                          n_sampling_rot=1000,
                           pink_noise_co=10000,
                           temp_star=5770.,
                           temp_planet=265.,
@@ -38,13 +39,14 @@ def compare_to_lay():
                           magnification=15.73,
                           f_number=20.21,
                           secondary_primary_ratio=0.114,
-                          primary_temp=25.,
-                          primary_emissivity=0.01)
+                          primary_temp=0.,
+                          primary_emissivity=0.00,
+                          integration_time=integration_time)
 
     inst.run()
 
     inst.photon_rates['lay_nchop'] = [0.097,
-                                      0.10,
+                                      0.070,
                                       1e-5,
                                       0.058,
                                       0.022,
@@ -54,6 +56,9 @@ def compare_to_lay():
                                       np.nan,
                                       0.004,
                                       0.006,
+                                      np.nan,
+                                      np.nan,
+                                      np.nan,
                                       0.07,
                                       0.026,
                                       0.024,
@@ -66,7 +71,11 @@ def compare_to_lay():
                                       0.025,
                                       0.061,
                                       0.071,
+                                      0.074,
+                                      0.071,
                                       0.971]
+
+    inst.photon_rates['lay_nchop'][:-1] *= integration_time
 
     inst.photon_rates['dev_nchop'] = np.round(((inst.photon_rates['nchop'] - inst.photon_rates['lay_nchop'])
                                               / inst.photon_rates['lay_nchop'] * 100).values.astype(float))
@@ -82,6 +91,9 @@ def compare_to_lay():
                                      np.nan,
                                      0.004,
                                      0.006,
+                                     np.nan,
+                                     np.nan,
+                                     np.nan,
                                      0.07,
                                      np.nan,
                                      0.025,
@@ -94,7 +106,11 @@ def compare_to_lay():
                                      np.nan,
                                      0.042,
                                      0.049,
+                                     0.074,
+                                     0.050,
                                      1.132]
+
+    inst.photon_rates['lay_chop'][:-1] *= integration_time
 
     inst.photon_rates['dev_chop'] = np.round(((inst.photon_rates['chop'] - inst.photon_rates['lay_chop'])
                                               / inst.photon_rates['lay_chop'] * 100).values.astype(float))
