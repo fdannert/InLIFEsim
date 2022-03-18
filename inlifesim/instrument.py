@@ -196,40 +196,104 @@ class Instrument(object):
         # self.sn_so_nchop = None
         # self.sn_nchop = None
 
-        self.photon_rates = pd.DataFrame(columns=['nchop', 'chop'],
-                                         index=['signal',  # planet signal
-                                                'noise',  # overall noise contribution
-                                                'wl',  # wavelength bin
-                                                'pn_sgl',  # stellar geometric leakage
-                                                'pn_ez',  # exozodi leakage
-                                                'pn_lz',  # localzodi leakage
-                                                'pn_dc',  # dark current
-                                                'pn_tbd',  # thermal background detector
-                                                'pn_tbpm',  # thermal background primary mirror
-                                                'pn_pa',  # polarization angle
-                                                'pn_snfl',  # stellar null floor leakage
-                                                'pn_ag_cld',  # agnostic cold instrumental photon noise
-                                                'pn_ag_ht',  # agnostic hot instrumental photon noise
-                                                'pn_ag_wht',  # agnostic white instrumental photon noise
-                                                'pn',  # photon noise
-                                                'sn_fo_a',  # first order amplitude
-                                                'sn_fo_phi',  # first order phase
-                                                'sn_fo_x',  # first order x position
-                                                'sn_fo_y',  # first order y position
-                                                'sn_fo',  # systematic noise first order
-                                                'sn_so_aa',  # second order amplitude-amplitude term
-                                                'sn_so_phiphi',  # second order phase-phase term
-                                                'sn_so_aphi',  # amplitude phase cross term
-                                                'sn_so_polpol',  # second order polarization-polarization term
-                                                'sn_so',  # systematic noise second order
-                                                'sn',  # systematic noise
-                                                'fundamental',  # fundamental noise (astrophysical)
-                                                'instrumental',  # instrumental noise
-                                                'snr'  # signal to noise ratio
-                                                ])
+        # self.photon_rates = pd.DataFrame(columns=['nchop', 'chop'],
+        #                                  index=['signal',  # planet signal
+        #                                         'noise',  # overall noise contribution
+        #                                         'wl',  # wavelength bin
+        #                                         'pn_sgl',  # stellar geometric leakage
+        #                                         'pn_ez',  # exozodi leakage
+        #                                         'pn_lz',  # localzodi leakage
+        #                                         'pn_dc',  # dark current
+        #                                         'pn_tbd',  # thermal background detector
+        #                                         'pn_tbpm',  # thermal background primary mirror
+        #                                         'pn_pa',  # polarization angle
+        #                                         'pn_snfl',  # stellar null floor leakage
+        #                                         'pn_ag_cld',  # agnostic cold instrumental photon noise
+        #                                         'pn_ag_ht',  # agnostic hot instrumental photon noise
+        #                                         'pn_ag_wht',  # agnostic white instrumental photon noise
+        #                                         'pn',  # photon noise
+        #                                         'sn_fo_a',  # first order amplitude
+        #                                         'sn_fo_phi',  # first order phase
+        #                                         'sn_fo_x',  # first order x position
+        #                                         'sn_fo_y',  # first order y position
+        #                                         'sn_fo',  # systematic noise first order
+        #                                         'sn_so_aa',  # second order amplitude-amplitude term
+        #                                         'sn_so_phiphi',  # second order phase-phase term
+        #                                         'sn_so_aphi',  # amplitude phase cross term
+        #                                         'sn_so_polpol',  # second order polarization-polarization term
+        #                                         'sn_so',  # systematic noise second order
+        #                                         'sn',  # systematic noise
+        #                                         'fundamental',  # fundamental noise (astrophysical)
+        #                                         'instrumental',  # instrumental noise
+        #                                         'snr'  # signal to noise ratio
+        #                                         ])
 
-        self.photon_rates.loc['wl', 'nchop'] = self.wl_bins
-        self.photon_rates.loc['wl', 'chop'] = self.wl_bins
+        self.photon_rates_chop = pd.DataFrame(columns=['signal',  # planet signal
+                                                       'noise',  # overall noise contribution
+                                                       'wl',  # wavelength bin
+                                                       'pn_sgl',  # stellar geometric leakage
+                                                       'pn_ez',  # exozodi leakage
+                                                       'pn_lz',  # localzodi leakage
+                                                       'pn_dc',  # dark current
+                                                       'pn_tbd',  # thermal background detector
+                                                       'pn_tbpm',  # thermal background primary mirror
+                                                       'pn_pa',  # polarization angle
+                                                       'pn_snfl',  # stellar null floor leakage
+                                                       'pn_ag_cld',  # agnostic cold instrumental photon noise
+                                                       'pn_ag_ht',  # agnostic hot instrumental photon noise
+                                                       'pn_ag_wht',  # agnostic white instrumental photon noise
+                                                       'pn',  # photon noise
+                                                       'sn_fo_a',  # first order amplitude
+                                                       'sn_fo_phi',  # first order phase
+                                                       'sn_fo_x',  # first order x position
+                                                       'sn_fo_y',  # first order y position
+                                                       'sn_fo',  # systematic noise first order
+                                                       'sn_so_aa',  # second order amplitude-amplitude term
+                                                       'sn_so_phiphi',  # second order phase-phase term
+                                                       'sn_so_aphi',  # amplitude phase cross term
+                                                       'sn_so_polpol',  # second order polarization-polarization term
+                                                       'sn_so',  # systematic noise second order
+                                                       'sn',  # systematic noise
+                                                       'fundamental',  # fundamental noise (astrophysical)
+                                                       'instrumental',  # instrumental noise
+                                                       'snr'  # signal to noise ratio
+                                                       ],
+                                              index=[str(np.round(wl*1e6, 1)) for wl in self.wl_bins])
+
+        self.photon_rates_nchop = pd.DataFrame(columns=['signal',  # planet signal
+                                                        'noise',  # overall noise contribution
+                                                        'wl',  # wavelength bin
+                                                        'pn_sgl',  # stellar geometric leakage
+                                                        'pn_ez',  # exozodi leakage
+                                                        'pn_lz',  # localzodi leakage
+                                                        'pn_dc',  # dark current
+                                                        'pn_tbd',  # thermal background detector
+                                                        'pn_tbpm',  # thermal background primary mirror
+                                                        'pn_pa',  # polarization angle
+                                                        'pn_snfl',  # stellar null floor leakage
+                                                        'pn_ag_cld',  # agnostic cold instrumental photon noise
+                                                        'pn_ag_ht',  # agnostic hot instrumental photon noise
+                                                        'pn_ag_wht',  # agnostic white instrumental photon noise
+                                                        'pn',  # photon noise
+                                                        'sn_fo_a',  # first order amplitude
+                                                        'sn_fo_phi',  # first order phase
+                                                        'sn_fo_x',  # first order x position
+                                                        'sn_fo_y',  # first order y position
+                                                        'sn_fo',  # systematic noise first order
+                                                        'sn_so_aa',  # second order amplitude-amplitude term
+                                                        'sn_so_phiphi',  # second order phase-phase term
+                                                        'sn_so_aphi',  # amplitude phase cross term
+                                                        'sn_so_polpol',  # second order polarization-polarization term
+                                                        'sn_so',  # systematic noise second order
+                                                        'sn',  # systematic noise
+                                                        'fundamental',  # fundamental noise (astrophysical)
+                                                        'instrumental',  # instrumental noise
+                                                        'snr'  # signal to noise ratio
+                                                        ],
+                                               index=[str(np.round(wl*1e6, 1)) for wl in self.wl_bins])
+
+        self.photon_rates_nchop['wl'] = self.wl_bins
+        self.photon_rates_chop['wl'] = self.wl_bins
 
         np.seterr(invalid='ignore')
 
@@ -576,7 +640,7 @@ class Instrument(object):
             # normalize the template function to rms of one
             self.planet_template[k, :] = self.planet_template[k, :] / np.std(self.planet_template[k, :])
 
-        self.photon_rates.loc['signal', 'nchop'] = np.abs(
+        self.photon_rates_nchop['signal'] = np.abs(
             (time_per_bin * self.planet_template * self.n_planet).sum(axis=1)
         ) / self.t_rot * self.t_int
 
@@ -627,7 +691,7 @@ class Instrument(object):
             # normalize the template function to rms of one
             self.planet_template_chop[k, :] = self.planet_template_chop[k, :] / np.std(self.planet_template_chop[k, :])
 
-        self.photon_rates.loc['signal', 'chop'] = np.abs(
+        self.photon_rates_chop['signal'] = np.abs(
             (time_per_bin * self.planet_template_chop * self.n_planet_chop).sum(axis=1)
         ) / self.t_rot * self.t_int
 
@@ -639,29 +703,29 @@ class Instrument(object):
                 np.array([self.A[j] * self.A[k] * np.cos(self.phi[j] - self.phi[k]) * self.b_star[:, j, k]
                           for k in range(self.num_a)]).sum(axis=0)
                 for j in range(self.num_a)]).sum(axis=0)
-            self.photon_rates.loc['pn_sgl', 'nchop'] = np.sqrt(n_0_star * self.t_int)
+            self.photon_rates_nchop['pn_sgl'] = np.sqrt(n_0_star * self.t_int)
 
             n_0_lz = (
                     self.flux_localzodi[:, np.newaxis] * self.A[np.newaxis, :] ** 2 * self.omega[:, np.newaxis]
             ).sum(axis=1)
-            self.photon_rates.loc['pn_lz', 'nchop'] = np.sqrt(n_0_lz * self.t_int)
+            self.photon_rates_nchop['pn_lz'] = np.sqrt(n_0_lz * self.t_int)
 
 
         n_0_ez = np.array([
             np.array([self.A[j] * self.A[k] * np.cos(self.phi[j] - self.phi[k]) * self.b_ez[:, j, k]
                       for k in range(self.num_a)]).sum(axis=0)
             for j in range(self.num_a)]).sum(axis=0)
-        self.photon_rates.loc['pn_ez', 'nchop'] = np.sqrt(n_0_ez * self.t_int)
+        self.photon_rates_nchop['pn_ez'] = np.sqrt(n_0_ez * self.t_int)
 
     def pn_dark_current(self) -> None:
         if self.detector_dark_current == 'MIRI':
             self.dark_current_pix = 0.2
-            self.photon_rates.loc['pn_dc', 'nchop'] = (np.sqrt(self.dark_current_pix * self.pix_per_wl)
+            self.photon_rates_nchop['pn_dc'] = (np.sqrt(self.dark_current_pix * self.pix_per_wl)
                                                        * np.ones((self.wl_bins.shape[0])))
         elif self.detector_dark_current == 'manual':
             if self.dark_current_pix == None:
                 raise ValueError('Dark current per pixel needs to be specified in manual mode')
-            self.photon_rates.loc['pn_dc', 'nchop'] = (np.sqrt(self.dark_current_pix * self.pix_per_wl)
+            self.photon_rates_nchop['pn_dc'] = (np.sqrt(self.dark_current_pix * self.pix_per_wl)
                                                        * np.ones((self.wl_bins.shape[0])))
         else:
             raise ValueError('Unkown detector type')
@@ -682,7 +746,7 @@ class Instrument(object):
         B_photon_int = np.trapz(y=B_photon, x=wl_bins)
         thermal_emission_det = 2 * np.pi * area_pixel * B_photon_int
 
-        self.photon_rates.loc['pn_tbd', 'nchop'] = (np.sqrt(thermal_emission_det * self.pix_per_wl)
+        self.photon_rates_nchop['pn_tbd'] = (np.sqrt(thermal_emission_det * self.pix_per_wl)
                                                     * np.ones((self.wl_bins.shape[0])))
 
     def pn_thermal_primary_mirror(self) -> None:
@@ -694,13 +758,13 @@ class Instrument(object):
                                                           bins=self.wl_bins,
                                                           width=self.wl_bin_widths,
                                                           temp=self.primary_temp)
-        self.photon_rates.loc['pn_tbpm', 'nchop'] = np.sqrt(thermal_emission_primary)
+        self.photon_rates_nchop['pn_tbpm'] = np.sqrt(thermal_emission_primary)
         
     def pn_agnostic(self) -> None:
         if (self.eps_white is None) or (self.eps_cold is None) or (self.eps_hot is None):
             raise ValueError('Agnostic scaling variables need to be specified in agnostic mode')
 
-        self.photon_rates.loc['pn_ag_ht', 'nchop'] = (self.eps_hot * 0.342 * self.diameter_ap ** 2
+        self.photon_rates_nchop['pn_ag_ht'] = (self.eps_hot * 0.342 * self.diameter_ap ** 2
                                                       * black_body(mode='wavelength',
                                                                    bins=self.wl_bins,
                                                                    width=self.wl_bin_widths,
@@ -711,7 +775,7 @@ class Instrument(object):
                                                                        temp=self.temp_star)
                                                       )
 
-        self.photon_rates.loc['pn_ag_cld', 'nchop'] = (self.eps_cold * 0.947 * self.diameter_ap ** 2
+        self.photon_rates_nchop['pn_ag_cld'] = (self.eps_cold * 0.947 * self.diameter_ap ** 2
                                                        * black_body(mode='wavelength',
                                                                     bins=self.wl_bins,
                                                                     width=self.wl_bin_widths,
@@ -722,31 +786,31 @@ class Instrument(object):
                                                                         temp=50.)
                                                        )
 
-        self.photon_rates.loc['pn_ag_wht', 'nchop'] = self.eps_white * np.ones_like(self.wl_bins)
+        self.photon_rates_nchop['pn_ag_wht'] = self.eps_white * np.ones_like(self.wl_bins)
 
     def fundamental_collect(self):
-        self.photon_rates.loc['fundamental', 'nchop'] = np.sqrt(self.photon_rates.loc['pn_sgl', 'nchop'] ** 2
-                                                                 + self.photon_rates.loc['pn_ez', 'nchop'] ** 2
-                                                                 + self.photon_rates.loc['pn_lz', 'nchop'] ** 2)
+        self.photon_rates_nchop['fundamental'] = np.sqrt(self.photon_rates_nchop['pn_sgl'] ** 2
+                                                                 + self.photon_rates_nchop['pn_ez'] ** 2
+                                                                 + self.photon_rates_nchop['pn_lz'] ** 2)
 
         # because of the incoherent combination of the final outputs, see Mugnier 2006
         if self.simultaneous_chopping:
-            self.photon_rates.loc['fundamental', 'chop'] *= np.sqrt(2)
+            self.photon_rates_chop['fundamental'] *= np.sqrt(2)
 
-        self.photon_rates.loc['snr', 'nchop'] = (self.photon_rates.loc['signal', 'nchop']
-                                                 / self.photon_rates.loc['fundamental', 'nchop'])
+        self.photon_rates_nchop['snr'] = (self.photon_rates_nchop['signal']
+                                                 / self.photon_rates_nchop['fundamental'])
 
-        self.photon_rates.loc['pn_sgl', 'chop'] = self.photon_rates.loc['pn_sgl', 'nchop']
-        self.photon_rates.loc['pn_ez', 'chop'] = self.photon_rates.loc['pn_ez', 'nchop']
-        self.photon_rates.loc['pn_lz', 'chop'] = self.photon_rates.loc['pn_lz', 'nchop']
-        self.photon_rates.loc['pn_dc', 'chop'] = self.photon_rates.loc['pn_dc', 'nchop']
-        self.photon_rates.loc['pn_tbd', 'chop'] = self.photon_rates.loc['pn_tbd', 'nchop']
-        self.photon_rates.loc['pn_tbpm', 'chop'] = self.photon_rates.loc['pn_tbpm', 'nchop']
-        self.photon_rates.loc['pn_ag_ht', 'chop'] = self.photon_rates.loc['pn_ag_ht', 'nchop']
-        self.photon_rates.loc['pn_ag_cld', 'chop'] = self.photon_rates.loc['pn_ag_cld', 'nchop']
-        self.photon_rates.loc['pn_ag_wht', 'chop'] = self.photon_rates.loc['pn_ag_wht', 'nchop']
-        self.photon_rates.loc['fundamental', 'chop'] = self.photon_rates.loc['fundamental', 'nchop']
-        self.photon_rates.loc['snr', 'chop'] = self.photon_rates.loc['snr', 'nchop']
+        self.photon_rates_chop['pn_sgl'] = self.photon_rates_nchop['pn_sgl']
+        self.photon_rates_chop['pn_ez'] = self.photon_rates_nchop['pn_ez']
+        self.photon_rates_chop['pn_lz'] = self.photon_rates_nchop['pn_lz']
+        self.photon_rates_chop['pn_dc'] = self.photon_rates_nchop['pn_dc']
+        self.photon_rates_chop['pn_tbd'] = self.photon_rates_nchop['pn_tbd']
+        self.photon_rates_chop['pn_tbpm'] = self.photon_rates_nchop['pn_tbpm']
+        self.photon_rates_chop['pn_ag_ht'] = self.photon_rates_nchop['pn_ag_ht']
+        self.photon_rates_chop['pn_ag_cld'] = self.photon_rates_nchop['pn_ag_cld']
+        self.photon_rates_chop['pn_ag_wht'] = self.photon_rates_nchop['pn_ag_wht']
+        self.photon_rates_chop['fundamental'] = self.photon_rates_nchop['fundamental']
+        self.photon_rates_chop['snr'] = self.photon_rates_nchop['snr']
 
     def sn_nchop(self):
 
@@ -791,66 +855,72 @@ class Instrument(object):
                         res.append(r)
 
         self.save_to_results(data=res,
-                             column_results='nchop')
+                             chop='nchop')
 
-        self.photon_rates.loc['pn', 'nchop'] = np.sqrt((self.photon_rates.loc['pn_sgl', 'nchop'] ** 2
-                                                       + self.photon_rates.loc['pn_ez', 'nchop'] ** 2
-                                                       + self.photon_rates.loc['pn_lz', 'nchop'] ** 2
-                                                       + self.photon_rates.loc['pn_pa', 'nchop'] ** 2
-                                                       + self.photon_rates.loc['pn_snfl', 'nchop'] ** 2))
+        self.photon_rates_nchop['pn'] = np.sqrt(np.array(self.photon_rates_nchop['pn_sgl'] ** 2
+                                                         + self.photon_rates_nchop['pn_ez'] ** 2
+                                                         + self.photon_rates_nchop['pn_lz'] ** 2
+                                                         + self.photon_rates_nchop['pn_pa'] ** 2
+                                                         + self.photon_rates_nchop['pn_snfl'] ** 2).astype(float))
 
-        self.photon_rates.loc['instrumental', 'nchop'] = np.sqrt(self.photon_rates.loc['sn', 'nchop'] ** 2
-                                                                 + self.photon_rates.loc['pn_pa', 'nchop'] ** 2
-                                                                 + self.photon_rates.loc['pn_snfl', 'nchop'] ** 2)
-        
+        self.photon_rates_nchop['instrumental'] = np.sqrt((self.photon_rates_nchop['sn'] ** 2
+                                                           + self.photon_rates_nchop['pn_pa'] ** 2
+                                                           + self.photon_rates_nchop['pn_snfl'] ** 2).astype(float))
+
         if not self.agnostic_mode:
-            self.photon_rates.loc['pn', 'nchop'] = np.sqrt(self.photon_rates.loc['pn', 'nchop'] ** 2
-                                                           + self.photon_rates.loc['pn_dc', 'nchop'] ** 2
-                                                           + self.photon_rates.loc['pn_tbd', 'nchop'] ** 2
-                                                           + self.photon_rates.loc['pn_tbpm', 'nchop'] ** 2)
-    
-            self.photon_rates.loc['instrumental', 'nchop'] = np.sqrt(self.photon_rates.loc['instrumental', 'nchop'] ** 2
-                                                                     + self.photon_rates.loc['pn_dc', 'nchop'] ** 2
-                                                                     + self.photon_rates.loc['pn_tbd', 'nchop'] ** 2
-                                                                     + self.photon_rates.loc['pn_tbpm', 'nchop'] ** 2)
-            
+            self.photon_rates_nchop['pn'] = np.sqrt((self.photon_rates_nchop['pn'] ** 2
+                                                     + self.photon_rates_nchop['pn_dc'] ** 2
+                                                     + self.photon_rates_nchop['pn_tbd'] ** 2
+                                                     + self.photon_rates_nchop['pn_tbpm'] ** 2).astype(float))
+
+            self.photon_rates_nchop['instrumental'] = np.sqrt((self.photon_rates_nchop['instrumental'] ** 2
+                                                               + self.photon_rates_nchop['pn_dc'] ** 2
+                                                               + self.photon_rates_nchop['pn_tbd'] ** 2
+                                                               + self.photon_rates_nchop['pn_tbpm'] ** 2).astype(float))
+
         else:
-            self.photon_rates.loc['pn', 'nchop'] = np.sqrt(self.photon_rates.loc['pn', 'nchop'] ** 2
-                                                           + self.photon_rates.loc['pn_ag_ht', 'nchop'] ** 2
-                                                           + self.photon_rates.loc['pn_ag_cld', 'nchop'] ** 2
-                                                           + self.photon_rates.loc['pn_ag_wht', 'nchop'] ** 2)
+            self.photon_rates_nchop['pn'] = np.sqrt((self.photon_rates_nchop['pn'] ** 2
+                                                     + self.photon_rates_nchop['pn_ag_ht'] ** 2
+                                                     + self.photon_rates_nchop['pn_ag_cld'] ** 2
+                                                     + self.photon_rates_nchop['pn_ag_wht'] ** 2).astype(float))
 
-            self.photon_rates.loc['instrumental', 'nchop'] = np.sqrt(self.photon_rates.loc['instrumental', 'nchop'] ** 2
-                                                                     + self.photon_rates.loc['pn_ag_ht', 'nchop'] ** 2
-                                                                     + self.photon_rates.loc['pn_ag_cld', 'nchop'] ** 2
-                                                                     + self.photon_rates.loc['pn_ag_wht', 'nchop'] ** 2)
+            self.photon_rates_nchop['instrumental'] = np.sqrt((self.photon_rates_nchop['instrumental'] ** 2
+                                                               + self.photon_rates_nchop['pn_ag_ht'] ** 2
+                                                               + self.photon_rates_nchop['pn_ag_cld'] ** 2
+                                                               + self.photon_rates_nchop['pn_ag_wht'] ** 2).astype(float))
 
-        self.photon_rates.loc['noise', 'nchop'] = np.sqrt(self.photon_rates.loc['pn', 'nchop'] ** 2
-                                                          + self.photon_rates.loc['sn', 'nchop'] ** 2)
+        self.photon_rates_nchop['noise'] = np.sqrt((self.photon_rates_nchop['pn'] ** 2
+                                                    + self.photon_rates_nchop['sn'] ** 2).astype(float))
 
-        self.photon_rates.loc['fundamental', 'nchop'] = np.sqrt(self.photon_rates.loc['pn_sgl', 'nchop'] ** 2
-                                                                + self.photon_rates.loc['pn_ez', 'nchop'] ** 2
-                                                                + self.photon_rates.loc['pn_lz', 'nchop'] ** 2)
+        self.photon_rates_nchop['fundamental'] = np.sqrt((self.photon_rates_nchop['pn_sgl'] ** 2
+                                                          + self.photon_rates_nchop['pn_ez'] ** 2
+                                                          + self.photon_rates_nchop['pn_lz'] ** 2).astype(float))
 
         # because of the incoherent combination of the final outputs, see Mugnier 2006
         if self.simultaneous_chopping:
-            self.photon_rates.loc['noise', 'chop'] *= np.sqrt(2)
-            self.photon_rates.loc['fundamental', 'chop'] *= np.sqrt(2)
-            self.photon_rates.loc['instrumental', 'chop'] *= np.sqrt(2)
+            self.photon_rates_chop['noise'] *= np.sqrt(2)
+            self.photon_rates_chop['fundamental'] *= np.sqrt(2)
+            self.photon_rates_chop['instrumental'] *= np.sqrt(2)
 
-        self.photon_rates.loc['snr', 'nchop'] = (self.photon_rates.loc['signal', 'nchop']
-                                                 / self.photon_rates.loc['noise', 'nchop'])
+        self.photon_rates_nchop['snr'] = (self.photon_rates_nchop['signal']
+                                                 / self.photon_rates_nchop['noise'])
 
     def save_to_results(self,
                         data,
-                        column_results):
-        for k in data[0].keys():
-            self.photon_rates.loc[k, column_results] = []
+                        chop):
+        # for k in data[0].keys():
+        #     self.photon_rates.loc[k, column_results] = []
+        # for d in data:
+        #     for k in d.keys():
+        #         self.photon_rates.loc[k, column_results].append(d[k])
+        # for k in data[0].keys():
+        #     self.photon_rates.loc[k, column_results] = np.array(self.photon_rates.loc[k, column_results])
         for d in data:
             for k in d.keys():
-                self.photon_rates.loc[k, column_results].append(d[k])
-        for k in data[0].keys():
-            self.photon_rates.loc[k, column_results] = np.array(self.photon_rates.loc[k, column_results])
+                if chop == 'nchop':
+                    self.photon_rates_nchop.loc[self.photon_rates_nchop['wl'] == d['wl'], k] = d[k]
+                elif chop == 'chop':
+                    self.photon_rates_chop.loc[self.photon_rates_chop['wl'] == d['wl'], k] = d[k]
 
     def sn_chop(self):
         mp_args = []
@@ -889,73 +959,73 @@ class Instrument(object):
                         res.append(r)
 
         self.save_to_results(data=res,
-                             column_results='chop')
-        
-        self.photon_rates.loc['pn_sgl', 'chop'] = self.photon_rates.loc['pn_sgl', 'nchop']
-        self.photon_rates.loc['pn_ez', 'chop'] = self.photon_rates.loc['pn_ez', 'nchop']
-        self.photon_rates.loc['pn_lz', 'chop'] = self.photon_rates.loc['pn_lz', 'nchop']
-        self.photon_rates.loc['pn_dc', 'chop'] = self.photon_rates.loc['pn_dc', 'nchop']
-        self.photon_rates.loc['pn_tbd', 'chop'] = self.photon_rates.loc['pn_tbd', 'nchop']
-        self.photon_rates.loc['pn_tbpm', 'chop'] = self.photon_rates.loc['pn_tbpm', 'nchop']
-        self.photon_rates.loc['pn_ag_ht', 'chop'] = self.photon_rates.loc['pn_ag_ht', 'nchop']
-        self.photon_rates.loc['pn_ag_cld', 'chop'] = self.photon_rates.loc['pn_ag_cld', 'nchop']
-        self.photon_rates.loc['pn_ag_wht', 'chop'] = self.photon_rates.loc['pn_ag_wht', 'nchop']
+                             chop='chop')
 
-        self.photon_rates.loc['pn', 'chop'] = np.sqrt(self.photon_rates.loc['pn_sgl', 'chop'] ** 2
-                                                       + self.photon_rates.loc['pn_ez', 'chop'] ** 2
-                                                       + self.photon_rates.loc['pn_lz', 'chop'] ** 2
-                                                       + self.photon_rates.loc['pn_pa', 'chop'] ** 2
-                                                       + self.photon_rates.loc['pn_snfl', 'chop'] ** 2)
+        self.photon_rates_chop['pn_sgl'] = self.photon_rates_nchop['pn_sgl']
+        self.photon_rates_chop['pn_ez'] = self.photon_rates_nchop['pn_ez']
+        self.photon_rates_chop['pn_lz'] = self.photon_rates_nchop['pn_lz']
+        self.photon_rates_chop['pn_dc'] = self.photon_rates_nchop['pn_dc']
+        self.photon_rates_chop['pn_tbd'] = self.photon_rates_nchop['pn_tbd']
+        self.photon_rates_chop['pn_tbpm'] = self.photon_rates_nchop['pn_tbpm']
+        self.photon_rates_chop['pn_ag_ht'] = self.photon_rates_nchop['pn_ag_ht']
+        self.photon_rates_chop['pn_ag_cld'] = self.photon_rates_nchop['pn_ag_cld']
+        self.photon_rates_chop['pn_ag_wht'] = self.photon_rates_nchop['pn_ag_wht']
 
-        self.photon_rates.loc['instrumental', 'chop'] = np.sqrt(self.photon_rates.loc['sn', 'chop'] ** 2
-                                                                 + self.photon_rates.loc['pn_pa', 'chop'] ** 2
-                                                                 + self.photon_rates.loc['pn_snfl', 'chop'] ** 2)
+        self.photon_rates_chop['pn'] = np.sqrt((self.photon_rates_chop['pn_sgl'] ** 2
+                                                + self.photon_rates_chop['pn_ez'] ** 2
+                                                + self.photon_rates_chop['pn_lz'] ** 2
+                                                + self.photon_rates_chop['pn_pa'] ** 2
+                                                + self.photon_rates_chop['pn_snfl'] ** 2).astype(float))
+
+        self.photon_rates_chop['instrumental'] = np.sqrt((self.photon_rates_chop['sn'] ** 2
+                                                          + self.photon_rates_chop['pn_pa'] ** 2
+                                                          + self.photon_rates_chop['pn_snfl'] ** 2).astype(float))
 
         if not self.agnostic_mode:
-            self.photon_rates.loc['pn', 'chop'] = np.sqrt(self.photon_rates.loc['pn', 'chop'] ** 2
-                                                          + self.photon_rates.loc['pn_dc', 'chop'] ** 2
-                                                          + self.photon_rates.loc['pn_tbd', 'chop'] ** 2
-                                                          + self.photon_rates.loc['pn_tbpm', 'chop'] ** 2)
+            self.photon_rates_chop['pn'] = np.sqrt((self.photon_rates_chop['pn'] ** 2
+                                                    + self.photon_rates_chop['pn_dc'] ** 2
+                                                    + self.photon_rates_chop['pn_tbd'] ** 2
+                                                    + self.photon_rates_chop['pn_tbpm'] ** 2).astype(float))
 
-            self.photon_rates.loc['instrumental', 'chop'] = np.sqrt(self.photon_rates.loc['instrumental', 'chop'] ** 2
-                                                                    + self.photon_rates.loc['pn_dc', 'chop'] ** 2
-                                                                    + self.photon_rates.loc['pn_tbd', 'chop'] ** 2
-                                                                    + self.photon_rates.loc['pn_tbpm', 'chop'] ** 2)
+            self.photon_rates_chop['instrumental'] = np.sqrt((self.photon_rates_chop['instrumental'] ** 2
+                                                              + self.photon_rates_chop['pn_dc'] ** 2
+                                                              + self.photon_rates_chop['pn_tbd'] ** 2
+                                                              + self.photon_rates_chop['pn_tbpm'] ** 2).astype(float))
 
         else:
-            self.photon_rates.loc['pn', 'chop'] = np.sqrt(self.photon_rates.loc['pn', 'chop'] ** 2
-                                                          + self.photon_rates.loc['pn_ag_ht', 'chop'] ** 2
-                                                          + self.photon_rates.loc['pn_ag_cld', 'chop'] ** 2
-                                                          + self.photon_rates.loc['pn_ag_wht', 'chop'] ** 2)
+            self.photon_rates_chop['pn'] = np.sqrt((self.photon_rates_chop['pn'] ** 2
+                                                    + self.photon_rates_chop['pn_ag_ht'] ** 2
+                                                    + self.photon_rates_chop['pn_ag_cld'] ** 2
+                                                    + self.photon_rates_chop['pn_ag_wht'] ** 2).astype(float))
 
-            self.photon_rates.loc['instrumental', 'chop'] = np.sqrt(self.photon_rates.loc['instrumental', 'chop'] ** 2
-                                                                    + self.photon_rates.loc['pn_ag_ht', 'chop'] ** 2
-                                                                    + self.photon_rates.loc['pn_ag_cld', 'chop'] ** 2
-                                                                    + self.photon_rates.loc['pn_ag_wht', 'chop'] ** 2)
+            self.photon_rates_chop['instrumental'] = np.sqrt((self.photon_rates_chop['instrumental'] ** 2
+                                                              + self.photon_rates_chop['pn_ag_ht'] ** 2
+                                                              + self.photon_rates_chop['pn_ag_cld'] ** 2
+                                                              + self.photon_rates_chop['pn_ag_wht'] ** 2).astype(float))
 
-        self.photon_rates.loc['noise', 'chop'] = np.sqrt(self.photon_rates.loc['pn', 'chop'] ** 2
-                                                         + self.photon_rates.loc['sn', 'chop'] ** 2)
+        self.photon_rates_chop['noise'] = np.sqrt((self.photon_rates_chop['pn'] ** 2
+                                                   + self.photon_rates_chop['sn'] ** 2).astype(float))
 
-        self.photon_rates.loc['fundamental', 'chop'] = np.sqrt(self.photon_rates.loc['pn_sgl', 'chop'] ** 2
-                                                               + self.photon_rates.loc['pn_ez', 'chop'] ** 2
-                                                               + self.photon_rates.loc['pn_lz', 'chop'] ** 2)
+        self.photon_rates_chop['fundamental'] = np.sqrt((self.photon_rates_chop['pn_sgl'] ** 2
+                                                         + self.photon_rates_chop['pn_ez'] ** 2
+                                                         + self.photon_rates_chop['pn_lz'] ** 2).astype(float))
 
         # because of the incoherent combination of the final outputs, see Mugnier 2006
         if self.simultaneous_chopping:
-            self.photon_rates.loc['noise', 'chop'] *= np.sqrt(2)
-            self.photon_rates.loc['fundamental', 'chop'] *= np.sqrt(2)
-            self.photon_rates.loc['instrumental', 'chop'] *= np.sqrt(2)
+            self.photon_rates_chop['noise'] *= np.sqrt(2)
+            self.photon_rates_chop['fundamental'] *= np.sqrt(2)
+            self.photon_rates_chop['instrumental'] *= np.sqrt(2)
 
-        self.photon_rates.loc['snr', 'chop'] = (self.photon_rates.loc['signal', 'chop']
-                                                / self.photon_rates.loc['noise', 'chop'])
+        self.photon_rates_chop['snr'] = (self.photon_rates_chop['signal']
+                                                / self.photon_rates_chop['noise'])
 
-    def cleanup(self):
-        if self.wl_bins.shape[0] == 1:
-            for i in self.photon_rates.index:
-                if type(self.photon_rates.loc[i, 'nchop']) == np.ndarray:
-                    self.photon_rates.loc[i, 'nchop'] = self.photon_rates.loc[i, 'nchop'][0]
-                if type(self.photon_rates.loc[i, 'chop']) == np.ndarray:
-                    self.photon_rates.loc[i, 'chop'] = self.photon_rates.loc[i, 'chop'][0]
+    # def cleanup(self):
+    #     if self.wl_bins.shape[0] == 1:
+    #         for i in self.photon_rates.index:
+    #             if type(self.photon_rates_nchop[i]) == np.ndarray:
+    #                 self.photon_rates_nchop[i] = self.photon_rates_nchop[i][0]
+    #             if type(self.photon_rates_chop[i]) == np.ndarray:
+    #                 self.photon_rates_chop[i, 'chop'] = self.photon_rates_chop[i, 'chop'][0]
 
 
     def run(self) -> None:
@@ -986,7 +1056,7 @@ class Instrument(object):
         if self.chopping not in ['chop', 'nchop', 'both']:
             raise ValueError('Invalid chopping selection')
 
-        self.cleanup()
+        # self.cleanup()
 
 
 def instrumental_noise_single_wav_nchop(mp_arg) -> dict:

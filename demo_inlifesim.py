@@ -1,4 +1,5 @@
 import numpy as np
+import time
 
 import inlifesim as ils
 
@@ -6,6 +7,10 @@ def compare_to_lay():
     integration_time = 50000
     wl_bins = np.array((10e-6, ))
     wl_bin_widths = np.array((0.5e-6, ))
+
+    t = time.time()
+    wl_bins = np.array((10e-6, 12e-6, 15e-6))
+    wl_bin_widths = np.array((0.5e-6, 0.5e-6, 0.5e-6,))
 
     inst = ils.Instrument(wl_bins=wl_bins,
                           wl_bin_widths=wl_bin_widths,
@@ -44,6 +49,7 @@ def compare_to_lay():
                           integration_time=integration_time)
 
     inst.run()
+    print(t-time.time())
 
     inst.photon_rates['lay_nchop'] = [0.097,
                                       0.070,
