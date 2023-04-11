@@ -310,19 +310,13 @@ class Instrument(object):
         self.bl_x = np.array([(self.col_pos[:, 0] - self.col_pos[i, 0]) for i in range(self.num_a)])
         self.bl_y = np.array([(self.col_pos[:, 1] - self.col_pos[i, 1]) for i in range(self.num_a)])
 
-        # set image size to appropriate sampling
-        # TODO: Add scaling factor for image size, currently hardcoded to 2
-        self.image_size = (4 * np.pi * np.max(np.abs(np.concatenate((self.bl_x.flatten(), self.bl_y.flatten()))))
-                           / self.diameter_ap + 2) * 2
-        self.image_size = int(np.ceil(self.image_size / 2.) * 2)
-
         # TODO: Factor 2 or factor 1 here?
         self.omega = 1 * np.pi * (self.wl_bins/(2. * self.diameter_ap))**2
 
-        hfov = self.wl_bins / (2. * self.diameter_ap)
+        self.hfov = self.wl_bins / (2. * self.diameter_ap)
 
-        hfov_mas = hfov * (3600000. * 180.) / np.pi
-        self.rad_pix = (2 * hfov) / self.image_size  # Radians per pixel
+        hfov_mas = self.hfov * (3600000. * 180.) / np.pi
+        self.rad_pix = (2 * self.hfov) / self.image_size  # Radians per pixel
         mas_pix = (2 * hfov_mas) / self.image_size  # mas per pixel
         self.au_pix = mas_pix / 1e3 * self.dist_star  # AU per pixel
 
@@ -425,12 +419,18 @@ class Instrument(object):
 
         # calculate the temperature at all pixel positions according to Kennedy2015 Eq. 2
         temp_map = np.where(r_cond,
-                            278.3 * (self.l_sun ** 0.25) / np.sqrt(self.r_au), 0)
+                            np.divide(278.3 * (self.l_sun ** 0.25), np.sqrt(self.r_au),
+                                      out=np.zeros_like(self.r_au),
+                                      where=(self.r_au != 0.)),
+                            0)
 
         # calculate the Sigma (Eq. 3) in Kennedy2015 and set everything inside the inner radius to 0
         sigma = np.where(r_cond,
                          sigma_zero * self.z *
-                         (self.r_au / r_0) ** (-alpha), 0)
+                         np.power(self.r_au / r_in, -alpha,
+                                  out=np.zeros_like(self.r_au),
+                                  where=(self.r_au != 0.)),
+                         0)
 
         # get the black body radiation emitted by the interexoplanetary dust
         f_nu_disk = black_body(bins=self.wl_bins[:, np.newaxis, np.newaxis],
@@ -444,62 +444,17 @@ class Instrument(object):
 
         sampling_rate_rad = self.rad_pix
 
-        # TODO: Check the transformation coefficients here
-        ez_fft = np.fft.fftshift(np.fft.fft2(flux_map_exozodi), axes=(-2, -1)) / 2
-        # ez_fft = np.fft.fft2(flux_map_exozodi) / 2
-        # ez_fft = np.fft.fftshift(np.fft.fft2(flux_map_exozodi)) / np.pi
-        r_rad_fft = np.fft.fftshift(np.fft.fftfreq(self.image_size, sampling_rate_rad[:, np.newaxis]), axes=(-1))
-        # r_rad_fft = np.fft.fftfreq(self.image_size, sampling_rate_rad[:, np.newaxis])
-
-
-        bl_x_fft = 2 * np.pi * self.bl_x[np.newaxis, :, :] / self.wl_bins[:, np.newaxis, np.newaxis]
-        bl_y_fft = 2 * np.pi * self.bl_y[np.newaxis, :, :] / self.wl_bins[:, np.newaxis, np.newaxis]
-
-        bl_x_pix = np.zeros_like(bl_x_fft)
-        bl_y_pix = np.zeros_like(bl_y_fft)
-        self.b_ez = np.zeros_like(bl_x_fft)
-        for k in range(bl_x_fft.shape[0]):
-            for i in range(bl_x_fft.shape[1]):
-                for j in range(bl_x_fft.shape[2]):
-                    bl_x_pix[k, i, j] = find_nearest_idx(r_rad_fft[k, :], bl_x_fft[k, i, j])
-                    bl_y_pix[k, i, j] = find_nearest_idx(r_rad_fft[k, :], bl_y_fft[k, i, j])
-                    self.b_ez[k, i, j] = np.real(ez_fft[k,
-                                                        int(find_nearest_idx(r_rad_fft[k, :], bl_x_fft[k, i, j])),
-                                                        int(find_nearest_idx(r_rad_fft[k, :], bl_y_fft[k, i, j]))
-                                                 ])
-
-        # plot bl_x_pix and bl_y_pix over the ez_fft image for the wavelength bin 13, 14 & 15
-        # plt_wls = [12, 13, 14, 15, 16]
-        # fig, ax = plt.subplots(nrows=len(plt_wls), figsize=(2,2*len(plt_wls)))
-        # for i, wl in enumerate(plt_wls):
-        #     ax[i].imshow(np.log10(np.abs(ez_fft[wl, :, :])))
-        #     ax[i].scatter(bl_x_pix[wl, :, :], bl_y_pix[wl, :, :], s=1)
-        #     ax[i].set_title(f'Wavelength bin {wl}')
-        # fig.tight_layout()
-        # plt.show()
-
-        # plot the mean of bl_y_pix for each wavelenght bin
-        # plt.plot(self.wl_bins, np.mean(bl_y_pix, axis=(1, 2)))
-        # plt.show()
-
-        # plot the mean of self.b_ez for each wavelenght bin and compare it to the mean of bl_y_pix
-        # plt.plot(np.mean(np.abs(bl_y_pix - np.mean(bl_y_pix)), axis=(1, 2)), label='bl_y_pix')
-        # plt.plot(np.mean(self.b_ez*10, axis=(1, 2)), label='b_ez')
-        # plt.xlabel('Wavelength bin')
-        # plt.ylabel('Mean of ...')
-        # plt.legend()
-        # plt.show()
-
-        # plot a grid of all ez_fft images
-        # fig, ax = plt.subplots(nrows=5, ncols=5, figsize=(10, 10))
-        # for i in range(5):
-        #     for j in range(5):
-        #         ax[i, j].imshow(np.log10(np.abs(ez_fft[i*5+j, :, :])))
-        #         ax[i, j].set_title(f'Wavelength bin {i*5+j}')
-        # fig.tight_layout()
-        # plt.show()
-        #
-        # a=1
+        # new implementation of the FT
+        self.b_ez = np.zeros((self.wl_bins.shape[0], self.bl_x.shape[0], self.bl_x.shape[1]))
+        for k in range(self.wl_bins.shape[0]):
+            theta_x, theta_y = np.meshgrid(np.linspace(-self.hfov[k], self.hfov[k], self.image_size),
+                                           np.linspace(-self.hfov[k], self.hfov[k], self.image_size))
+            for i in range(self.bl_x.shape[0]):
+                for j in range(self.bl_x.shape[1]):
+                    self.b_ez[k, i, j] = (flux_map_exozodi[k, ] * np.cos(
+                        2 * np.pi / self.wl_bins[k]
+                        * (self.bl_x[i, j] * theta_x
+                           + self.bl_y[i, j] * theta_y))).sum()
 
     def response(self) -> None:
         theta_x = np.linspace(-1e-6, 1e-6, 200)[np.newaxis, :]
