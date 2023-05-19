@@ -1021,6 +1021,18 @@ class Instrument(object):
         self.photon_rates_chop['snr'] = (self.photon_rates_chop['signal']
                                                 / self.photon_rates_chop['noise'])
 
+    def calculate_null_depth(self):
+        input_star = np.sum(self.flux_star[np.newaxis, :] * self.A[:, np.newaxis]**2, axis=0)
+
+        if (self.chopping == 'nchop') or (self.chopping == 'both'):
+            self.photon_rates_nchop['effective_null'] = (self.photon_rates_nchop['pn_sgl']**2 + self.photon_rates_nchop['pn_snfl']**2) / self.t_int / input_star
+            self.photon_rates_nchop['null_floor'] = (self.photon_rates_nchop['pn_snfl']**2) / self.t_int / input_star
+
+        if (self.chopping == 'chop') or (self.chopping == 'both'):
+            self.photon_rates_chop['effective_null'] = (self.photon_rates_chop['pn_sgl']**2 + self.photon_rates_chop['pn_snfl']**2) / self.t_int / input_star
+            self.photon_rates_chop['null_floor'] = (self.photon_rates_chop['pn_snfl']**2) / self.t_int / input_star
+
+
     # def cleanup(self):
     #     if self.wl_bins.shape[0] == 1:
     #         for i in self.photon_rates.index:
@@ -1057,6 +1069,8 @@ class Instrument(object):
             self.sn_chop()
         if self.chopping not in ['chop', 'nchop', 'both']:
             raise ValueError('Invalid chopping selection')
+
+        self.calculate_null_depth()
 
         # self.cleanup()
 
