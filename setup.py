@@ -12,7 +12,8 @@ setup(
     install_requires=['numpy',
                       'scipy',
                       'pandas',
-                      'tqdm'
+                      'tqdm',
+                      'xarray'
                       ],
     license='GPLv3',
     zip_safe=False,
