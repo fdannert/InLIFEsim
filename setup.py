@@ -13,7 +13,8 @@ setup(
                       'scipy',
                       'pandas',
                       'tqdm',
-                      'xarray'
+                      'xarray',
+                      'h5netcdf'
                       ],
     license='GPLv3',
     zip_safe=False,
