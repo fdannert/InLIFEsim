@@ -7,6 +7,7 @@ from scipy.special import jn, spherical_jn
 from scipy.fft import fft, fftfreq, fftshift, rfft
 import pandas as pd
 import xarray as xr
+from line_profiler_pycharm import profile
 
 from inlifesim.util import black_body, find_nearest_idx
 
@@ -406,6 +407,7 @@ class Instrument(object):
              + (0.6 * (self.wl_bins / 11e-6) ** (-0.4) * np.cos(lat)) ** 2)
         )
 
+    @profile
     def create_exozodi(self) -> None:
         # calculate the parameters required by Kennedy2015
         alpha = 0.34
@@ -592,6 +594,7 @@ class Instrument(object):
         self.c_phiphi = self.c_phiphi_star + self.c_phiphi_ez
         self.c_thetatheta = self.c_thetatheta_star
 
+    @profile
     def planet_signal(self) -> None:
         theta = self.separation_planet * 1.496e11 / (self.dist_star * 3.086e16)  # theta_x/y in Fig. 1
         self.phi_rot = np.linspace(0, 2 * np.pi, self.n_sampling_rot)
