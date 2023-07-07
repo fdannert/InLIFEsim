@@ -7,7 +7,7 @@ from scipy.special import jn, spherical_jn
 from scipy.fft import fft, fftfreq, fftshift, rfft
 import pandas as pd
 import xarray as xr
-from line_profiler_pycharm import profile
+# from line_profiler_pycharm import profile
 
 from inlifesim.util import black_body, find_nearest_idx
 
@@ -79,6 +79,7 @@ class Instrument(object):
         self.pink_noise_co = pink_noise_co
         self.n_cpu = n_cpu
         self.n_sampling_max = n_sampling_max
+        self.harmonic_number_n_sampling_max = harmonic_number_approximation(n_sampling_max)
         self.chopping = chopping
         self.simultaneous_chopping = simultaneous_chopping
         self.t_int = integration_time
@@ -172,7 +173,8 @@ class Instrument(object):
 
         # planet signal
         self.sig_planet_nchop = None
-        self.planet_template = None
+        self.planet_template_nchop = None
+        self.planet_template_chop = None
         self.n_planet = None
         self.phi_rot = None
         self.theta_x = None
@@ -407,7 +409,6 @@ class Instrument(object):
              + (0.6 * (self.wl_bins / 11e-6) ** (-0.4) * np.cos(lat)) ** 2)
         )
 
-    @profile
     def create_exozodi(self) -> None:
         # calculate the parameters required by Kennedy2015
         alpha = 0.34
@@ -594,7 +595,6 @@ class Instrument(object):
         self.c_phiphi = self.c_phiphi_star + self.c_phiphi_ez
         self.c_thetatheta = self.c_thetatheta_star
 
-    @profile
     def planet_signal(self) -> None:
         theta = self.separation_planet * 1.496e11 / (self.dist_star * 3.086e16)  # theta_x/y in Fig. 1
         self.phi_rot = np.linspace(0, 2 * np.pi, self.n_sampling_rot)
@@ -622,33 +622,6 @@ class Instrument(object):
                  for j in range(self.num_a)]).sum(axis=0)
              for l in range(len(self.phi_rot))]), 0, 1)
 
-        # Fourier transform of planet signal equivalent to Eq (33)
-        nf = rfft(self.n_planet)
-        nfft = nf / self.n_sampling_rot
-        nfft[:, 1:] *= 2
-
-        # creation of template function
-        # removal of even components and DC
-        nfft_odd = nfft
-        nfft_odd[:, ::2] = 0
-
-        # transform back into time domain
-        self.planet_template = np.zeros((self.wl_bins.shape[0], len(self.phi_rot)))
-        for k in range(self.wl_bins.shape[0]):
-            ret = []
-            for n in range(len(nfft_odd[k, :])):
-                s = nfft_odd[k, n] * np.exp(1j * 2 * np.pi * n * self.phi_rot / (2 * np.pi))
-                ret.append(s)
-            ret = np.array(ret).sum(axis=0).real
-            self.planet_template[k, :] = ret
-
-            # normalize the template function to rms of one
-            self.planet_template[k, :] = self.planet_template[k, :] / np.std(self.planet_template[k, :])
-
-        self.photon_rates_nchop['signal'] = np.abs(
-            (time_per_bin * self.planet_template * self.n_planet).sum(axis=1)
-        ) / self.t_rot * self.t_int
-
         # chopped planet signal
         self.n_planet_r = np.swapaxes(np.array(
             [self.flux_planet
@@ -658,15 +631,49 @@ class Instrument(object):
                      * (np.cos(self.phi_r[j] - self.phi_r[k])
                         * np.cos(
                                 2 * np.pi / self.wl_bins
-                                * (self.bl_x[j, k] * self.theta_x[l] + self.bl_y[j, k] * self.theta_y[l])
+                                * (self.bl_x[j, k] * self.theta_x[l]
+                                   + self.bl_y[j, k] * self.theta_y[l])
                             )
                         - np.sin(self.phi_r[j] - self.phi_r[k])
                         * np.sin(
                                 2 * np.pi / self.wl_bins
-                                * (self.bl_x[j, k] * self.theta_x[l] + self.bl_y[j, k] * self.theta_y[l])))
+                                * (self.bl_x[j, k] * self.theta_x[l]
+                                   + self.bl_y[j, k] * self.theta_y[l])))
                      for k in range(self.num_a)]).sum(axis=0)
                  for j in range(self.num_a)]).sum(axis=0)
              for l in range(len(self.phi_rot))]), 0, 1)
+
+        if self.simultaneous_chopping:
+            self.n_planet_nchop = self.n_planet + self.n_planet_r
+
+        # Fourier transform of planet signal equivalent to Eq (33)
+        nf = rfft(self.n_planet_nchop)
+        nfft = nf / self.n_sampling_rot
+        nfft[:, 1:] *= 2
+
+        # creation of template function
+        # removal of even components and DC
+        nfft_odd = nfft
+        if not self.simultaneous_chopping:
+            nfft_odd[:, ::2] = 0
+
+        # transform back into time domain
+        self.planet_template_nchop = np.zeros((self.wl_bins.shape[0], len(self.phi_rot)))
+        for k in range(self.wl_bins.shape[0]):
+            ret = []
+            for n in range(len(nfft_odd[k, :])):
+                s = nfft_odd[k, n] * np.exp(1j * 2 * np.pi * n * self.phi_rot / (2 * np.pi))
+                ret.append(s)
+            ret = np.array(ret).sum(axis=0).real
+            self.planet_template_nchop[k, :] = ret
+
+            # normalize the template function to rms of one
+            self.planet_template_nchop[k, :] = (self.planet_template_nchop[k, :]
+                                                / np.std(self.planet_template_nchop[k, :]))
+
+        self.photon_rates_nchop['signal'] = (np.abs(
+            (time_per_bin * self.planet_template_nchop * self.n_planet_nchop)).sum(axis=1)
+         / self.t_rot * self.t_int)
 
         self.n_planet_chop = (self.n_planet - self.n_planet_r)
 
@@ -694,10 +701,11 @@ class Instrument(object):
             self.planet_template_chop[k, :] = ret
 
             # normalize the template function to rms of one
-            self.planet_template_chop[k, :] = self.planet_template_chop[k, :] / np.std(self.planet_template_chop[k, :])
+            self.planet_template_chop[k, :] = (self.planet_template_chop[k, :]
+                                               / np.std(self.planet_template_chop[k, :]))
 
-        self.photon_rates_chop['signal'] = np.abs(
-            (time_per_bin * self.planet_template_chop * self.n_planet_chop).sum(axis=1)
+        self.photon_rates_chop['signal'] = (np.abs(
+            (time_per_bin * self.planet_template_chop * self.n_planet_chop)).sum(axis=1)
         ) / self.t_rot * self.t_int
 
 
@@ -836,8 +844,9 @@ class Instrument(object):
                             'c_phiphi': self.c_phiphi[i, :, :],
                             'c_aphi': self.c_aphi[i, :, :],
                             'c_thetatheta': self.c_thetatheta[i, :, :],
-                            'template': self.planet_template[i, :],
+                            'planet_template_nchop': self.planet_template_nchop[i, :],
                             'n_sampling_max': self.n_sampling_max,
+                            'harmonic_number_n_sampling_max': self.harmonic_number_n_sampling_max,
                             'd_a_rms': self.d_a_rms,
                             'd_phi_rms': self.d_phi_rms,
                             'd_pol_rms': self.d_pol_rms,
@@ -920,12 +929,27 @@ class Instrument(object):
         #         self.photon_rates.loc[k, column_results].append(d[k])
         # for k in data[0].keys():
         #     self.photon_rates.loc[k, column_results] = np.array(self.photon_rates.loc[k, column_results])
-        for d in data:
-            for k in d.keys():
-                if chop == 'nchop':
-                    self.photon_rates_nchop.loc[self.photon_rates_nchop['wl'] == d['wl'], k] = d[k]
-                elif chop == 'chop':
-                    self.photon_rates_chop.loc[self.photon_rates_chop['wl'] == d['wl'], k] = d[k]
+        data = pd.DataFrame(data)
+        data['wl_index'] = np.round(data.wl*1e6, 1).astype(str)
+        data = data.set_index(keys='wl_index', drop=True)
+
+        if chop == 'nchop':
+            self.photon_rates_nchop = self.photon_rates_nchop.drop(columns=data.columns)
+            self.photon_rates_nchop = self.photon_rates_nchop.merge(data,
+                                                                    left_index=True,
+                                                                    right_index=True)
+        elif chop == 'chop':
+            self.photon_rates_chop = self.photon_rates_chop.drop(columns=data.columns)
+            self.photon_rates_chop = self.photon_rates_chop.merge(data,
+                                                                  left_index=True,
+                                                                  right_index=True)
+
+        # for d in data:
+        #     for k in d.keys():
+        #         if chop == 'nchop':
+        #             self.photon_rates_nchop.loc[self.photon_rates_nchop['wl'] == d['wl'], k] = d[k]
+        #         elif chop == 'chop':
+        #             self.photon_rates_chop.loc[self.photon_rates_chop['wl'] == d['wl'], k] = d[k]
 
     def sn_chop(self):
         mp_args = []
@@ -940,6 +964,7 @@ class Instrument(object):
                             'c_phiphi': self.c_phiphi[i, :, :],
                             'rms_mode': self.rms_mode,
                             'n_sampling_max': self.n_sampling_max,
+                            'harmonic_number_n_sampling_max': self.harmonic_number_n_sampling_max,
                             't_rot': self.t_rot,
                             't_int': self.t_int,
                             'd_a_rms': self.d_a_rms,
@@ -1028,13 +1053,22 @@ class Instrument(object):
         input_star = np.sum(self.flux_star[np.newaxis, :] * self.A[:, np.newaxis]**2, axis=0)
 
         if (self.chopping == 'nchop') or (self.chopping == 'both'):
-            self.photon_rates_nchop['effective_null'] = (self.photon_rates_nchop['pn_sgl']**2 + self.photon_rates_nchop['pn_snfl']**2) / self.t_int / input_star
-            self.photon_rates_nchop['null_floor'] = (self.photon_rates_nchop['pn_snfl']**2) / self.t_int / input_star
+            self.photon_rates_nchop['effective_null'] = (
+                                                                self.photon_rates_nchop['pn_sgl']**2
+                                                         + self.photon_rates_nchop['pn_snfl']**2
+                                                        ) / self.t_int / input_star
+            self.photon_rates_nchop['null_floor'] = (
+                                                            self.photon_rates_nchop['pn_snfl']**2
+                                                    ) / self.t_int / input_star
 
         if (self.chopping == 'chop') or (self.chopping == 'both'):
-            self.photon_rates_chop['effective_null'] = (self.photon_rates_chop['pn_sgl']**2 + self.photon_rates_chop['pn_snfl']**2) / self.t_int / input_star
-            self.photon_rates_chop['null_floor'] = (self.photon_rates_chop['pn_snfl']**2) / self.t_int / input_star
-
+            self.photon_rates_chop['effective_null'] = (
+                                                               self.photon_rates_chop['pn_sgl']**2
+                                                        + self.photon_rates_chop['pn_snfl']**2
+                                                       ) / self.t_int / input_star
+            self.photon_rates_chop['null_floor'] = (
+                                                           self.photon_rates_chop['pn_snfl']**2
+                                                   ) / self.t_int / input_star
 
     # def cleanup(self):
     #     if self.wl_bins.shape[0] == 1:
@@ -1092,8 +1126,9 @@ def instrumental_noise_single_wav_nchop(mp_arg) -> dict:
     c_phiphi = mp_arg['c_phiphi']
     c_aphi = mp_arg['c_aphi']
     c_thetatheta = mp_arg['c_thetatheta']
-    template = mp_arg['template']
+    planet_template_nchop = mp_arg['planet_template_nchop']
     n_sampling_max = mp_arg['n_sampling_max']
+    harmonic_number_n_sampling_max = mp_arg['harmonic_number_n_sampling_max']
     d_a_rms = mp_arg['d_a_rms']
     d_phi_rms = mp_arg['d_phi_rms']
     d_pol_rms = mp_arg['d_pol_rms']
@@ -1103,28 +1138,37 @@ def instrumental_noise_single_wav_nchop(mp_arg) -> dict:
     t_int = mp_arg['t_int']
     pink_noise_co = mp_arg['pink_noise_co']
 
-    if rms_mode == 'lay':
-        d_a_rms_0 = 0.001
-        d_a_rms = d_a_rms_0 * (wl / 10e-6) ** (-1.5)
+    # create noise PSD
+    d_a_rms, d_phi_rms, d_pol_rms, d_x_rms, d_y_rms = rms_frequency_adjust(rms_mode=rms_mode,
+                                                                           wl=wl,
+                                                                           d_a_rms=d_a_rms,
+                                                                           d_phi_rms=d_phi_rms,
+                                                                           d_pol_rms=d_pol_rms,
+                                                                           d_x_rms=d_x_rms,
+                                                                           d_y_rms=d_y_rms)
 
-        d_phi_rms_0 = 0.001
-        d_phi_rms = d_phi_rms_0 * (wl / 10e-6) ** (-1)
-
-        d_pol_rms = 0.001
-
-        d_x_rms = 0.01
-
-        d_y_rms = 0.01
-    elif rms_mode == 'static':
-        if (d_a_rms is None) or (d_phi_rms is None) or (d_pol_rms is None) or (d_x_rms is None) or (d_y_rms is None):
-            raise ValueError('RMS values need to be specified in static mode')
-    elif rms_mode == 'wavelength':
-        if (d_a_rms is None) or (d_phi_rms is None) or (d_pol_rms is None) or (d_x_rms is None) or (d_y_rms is None):
-            raise ValueError('RMS values need to be specified in wavelength mode')
-        d_a_rms = d_a_rms * (wl / 10e-6) ** (-1.5)
-        d_phi_rms = d_phi_rms * (wl / 10e-6) ** (-1)
-    else:
-        raise ValueError('RMS mode not recongnized')
+    # if rms_mode == 'lay':
+    #     d_a_rms_0 = 0.001
+    #     d_a_rms = d_a_rms_0 * (wl / 10e-6) ** (-1.5)
+    #
+    #     d_phi_rms_0 = 0.001
+    #     d_phi_rms = d_phi_rms_0 * (wl / 10e-6) ** (-1)
+    #
+    #     d_pol_rms = 0.001
+    #
+    #     d_x_rms = 0.01
+    #
+    #     d_y_rms = 0.01
+    # elif rms_mode == 'static':
+    #     if (d_a_rms is None) or (d_phi_rms is None) or (d_pol_rms is None) or (d_x_rms is None) or (d_y_rms is None):
+    #         raise ValueError('RMS values need to be specified in static mode')
+    # elif rms_mode == 'wavelength':
+    #     if (d_a_rms is None) or (d_phi_rms is None) or (d_pol_rms is None) or (d_x_rms is None) or (d_y_rms is None):
+    #         raise ValueError('RMS values need to be specified in wavelength mode')
+    #     d_a_rms = d_a_rms * (wl / 10e-6) ** (-1.5)
+    #     d_phi_rms = d_phi_rms * (wl / 10e-6) ** (-1)
+    # else:
+    #     raise ValueError('RMS mode not recongnized')
 
     d_a_co = pink_noise_co
     d_phi_co = pink_noise_co
@@ -1132,42 +1176,71 @@ def instrumental_noise_single_wav_nchop(mp_arg) -> dict:
     d_x_co = 0.64e-3
     d_y_co = 0.64e-3
 
-    comp_factor = 1  # factor for the conversion of periodigram to Fourier components
-
     # create pink noise PSDs
-    d_a_freq = np.arange(0, n_sampling_max + 1) * 1 / t_rot
-    d_a_psd = np.append([0], 1 / d_a_freq[1:])
-    d_a_psd = np.array(
-        [d_a_psd * ((d_a_rms / 1) ** 2 / (np.sum(d_a_psd / t_rot)
-                                          + np.log(d_a_co / d_a_freq[int(n_sampling_max)])))
-         for j in range(num_a)])
-    avg_d_a_2 = comp_factor / t_rot * d_a_psd.sum(axis=1)  # by parseval theorem
-    d_a_b_2 = comp_factor / t_rot * d_a_psd
+    d_a_psd, d_a_freq, avg_d_a_2, d_a_b_2 = create_pink_psd(t_rot=t_rot,
+                                                            n_sampling_max=n_sampling_max,
+                                                            harmonic_number_n_sampling_max=harmonic_number_n_sampling_max,
+                                                            rms=d_a_rms,
+                                                            num_a=num_a)
 
-    d_phi_freq = np.arange(0, n_sampling_max + 1) * 1 / t_rot
-    d_phi_psd = np.append([0], 1 / d_phi_freq[1:])
-    d_phi_psd = d_phi_psd * (
-            d_phi_rms ** 2 / (np.sum(d_phi_psd / t_rot) + np.log(d_phi_co / d_phi_freq[int(n_sampling_max)])))
-    avg_d_phi_2 = comp_factor / t_rot * d_phi_psd.sum()
-    d_phi_b_2 = comp_factor / t_rot * d_phi_psd
+    d_phi_psd, d_phi_freq, avg_d_phi_2, d_phi_b_2 = create_pink_psd(t_rot=t_rot,
+                                                                    n_sampling_max=n_sampling_max,
+                                                                    harmonic_number_n_sampling_max=harmonic_number_n_sampling_max,
+                                                                    rms=d_phi_rms,
+                                                                    num_a=1)
 
-    d_pol_freq = np.arange(0, n_sampling_max + 1) * 1 / t_rot
-    d_pol_psd = np.append([0], 1 / d_pol_freq[1:])
-    d_pol_psd = d_pol_psd * (
-            d_pol_rms ** 2 / (np.sum(d_pol_psd / t_rot) + np.log(d_pol_co / d_pol_freq[int(n_sampling_max)])))
-    avg_d_pol_2 = comp_factor / t_rot * d_pol_psd.sum()
-    d_pol_b_2 = comp_factor / t_rot * d_pol_psd
+    d_pol_psd, d_pol_freq, avg_d_pol_2, d_pol_b_2 = create_pink_psd(t_rot=t_rot,
+                                                                    n_sampling_max=n_sampling_max,
+                                                                    harmonic_number_n_sampling_max=harmonic_number_n_sampling_max,
+                                                                    rms=d_pol_rms,
+                                                                    num_a=1)
 
     # create white noise PSD
-    d_x_freq = np.arange(0, d_x_co, step=1 / t_rot)
-    d_x_psd = np.ones_like(d_x_freq) * d_x_rms ** 2 * t_rot / len(d_x_freq - 1)
-    d_x_psd[0] = 0
-    d_x_b_2 = comp_factor / t_rot * d_x_psd
 
-    d_y_freq = np.arange(0, d_y_co, step=1 / t_rot)
-    d_y_psd = np.ones_like(d_y_freq) * d_y_rms ** 2 * t_rot / len(d_y_freq - 1)
-    d_y_psd[0] = 0
-    d_y_b_2 = comp_factor / t_rot * d_y_psd
+    d_x_psd, d_x_freq, avg_d_x_2, d_x_b_2 = create_white_psd(cutoff_freq=d_x_co,
+                                                             rms=d_x_rms,
+                                                             t_rot=t_rot)
+
+    d_y_psd, d_y_freq, avg_d_y_2, d_y_b_2 = create_white_psd(cutoff_freq=d_y_co,
+                                                             rms=d_y_rms,
+                                                             t_rot=t_rot)
+
+    # comp_factor = 1  # factor for the conversion of periodigram to Fourier components
+    #
+    # # create pink noise PSDs
+    # d_a_freq = np.arange(0, n_sampling_max + 1) * 1 / t_rot
+    # d_a_psd = np.append([0], 1 / d_a_freq[1:])
+    # d_a_psd = np.array(
+    #     [d_a_psd * ((d_a_rms / 1) ** 2 / (np.sum(d_a_psd / t_rot)
+    #                                       + np.log(d_a_co / d_a_freq[int(n_sampling_max)])))
+    #      for j in range(num_a)])
+    # avg_d_a_2 = comp_factor / t_rot * d_a_psd.sum(axis=1)  # by parseval theorem
+    # d_a_b_2 = comp_factor / t_rot * d_a_psd
+    #
+    # d_phi_freq = np.arange(0, n_sampling_max + 1) * 1 / t_rot
+    # d_phi_psd = np.append([0], 1 / d_phi_freq[1:])
+    # d_phi_psd = d_phi_psd * (
+    #         d_phi_rms ** 2 / (np.sum(d_phi_psd / t_rot) + np.log(d_phi_co / d_phi_freq[int(n_sampling_max)])))
+    # avg_d_phi_2 = comp_factor / t_rot * d_phi_psd.sum()
+    # d_phi_b_2 = comp_factor / t_rot * d_phi_psd
+    #
+    # d_pol_freq = np.arange(0, n_sampling_max + 1) * 1 / t_rot
+    # d_pol_psd = np.append([0], 1 / d_pol_freq[1:])
+    # d_pol_psd = d_pol_psd * (
+    #         d_pol_rms ** 2 / (np.sum(d_pol_psd / t_rot) + np.log(d_pol_co / d_pol_freq[int(n_sampling_max)])))
+    # avg_d_pol_2 = comp_factor / t_rot * d_pol_psd.sum()
+    # d_pol_b_2 = comp_factor / t_rot * d_pol_psd
+
+    # create white noise PSD
+    # d_x_freq = np.arange(0, d_x_co, step=1 / t_rot)
+    # d_x_psd = np.ones_like(d_x_freq) * d_x_rms ** 2 * t_rot / len(d_x_freq - 1)
+    # d_x_psd[0] = 0
+    # d_x_b_2 = comp_factor / t_rot * d_x_psd
+    #
+    # d_y_freq = np.arange(0, d_y_co, step=1 / t_rot)
+    # d_y_psd = np.ones_like(d_y_freq) * d_y_rms ** 2 * t_rot / len(d_y_freq - 1)
+    # d_y_psd[0] = 0
+    # d_y_b_2 = comp_factor / t_rot * d_y_psd
 
     noise_nchop = {'wl': wl}
 
@@ -1176,8 +1249,8 @@ def instrumental_noise_single_wav_nchop(mp_arg) -> dict:
     dn_null_floor = np.array([c_aa[j, j] * avg_d_a_2[j] + c_phiphi[j, j] * avg_d_phi_2 for j in range(num_a)]).sum()
     noise_nchop['pn_snfl'] = np.sqrt(dn_null_floor * t_int)
 
-    template_fft = rfft(template)
-    template_fft = template_fft / len(template)
+    template_fft = rfft(planet_template_nchop)
+    template_fft = template_fft / len(planet_template_nchop)
 
     # first order terms
     d_a_j_hat_2 = np.array([(np.abs(template_fft) ** 2 * d_a_b_2[j, :len(template_fft)]).sum() for j in range(num_a)])
@@ -1276,7 +1349,7 @@ def instrumental_noise_single_wav_nchop(mp_arg) -> dict:
 
     return noise_nchop
 
-
+# @profile
 def instrumental_noise_single_wav_chop(mp_arg) -> dict:
     flux_star = mp_arg['flux_star']
     A = mp_arg['A']
@@ -1289,6 +1362,7 @@ def instrumental_noise_single_wav_chop(mp_arg) -> dict:
     c_phiphi = mp_arg['c_phiphi']
     rms_mode = mp_arg['rms_mode']
     n_sampling_max = mp_arg['n_sampling_max']
+    harmonic_number_n_sampling_max = mp_arg['harmonic_number_n_sampling_max']
     t_rot = mp_arg['t_rot']
     t_int = mp_arg['t_int']
     d_a_rms = mp_arg['d_a_rms']
@@ -1299,56 +1373,85 @@ def instrumental_noise_single_wav_chop(mp_arg) -> dict:
     planet_template_c_fft = rfft(planet_template_chop)
     planet_template_c_fft = planet_template_c_fft / len(planet_template_chop)
 
+    # mirror the planet template
+    planet_template_c_fft = np.concatenate((np.flip(planet_template_c_fft[1:]), planet_template_c_fft))
+
     # create noise PSD
-    if rms_mode == 'lay':
-        d_a_rms_0 = 0.001
-        d_a_rms = d_a_rms_0 * (wl / 10e-6) ** (-1.5)
-
-        d_phi_rms_0 = 0.001
-        d_phi_rms = d_phi_rms_0 * (wl / 10e-6) ** (-1)
-
-        d_pol_rms = 0.001
-    elif rms_mode == 'static':
-        if (d_a_rms is None) or (d_phi_rms is None):
-            raise ValueError('RMS values need to be specified in static mode')
-    elif rms_mode == 'wavelength':
-        if (d_a_rms is None) or (d_phi_rms is None):
-            raise ValueError('RMS values need to be specified in wavelength mode')
-        d_a_rms = d_a_rms * (wl / 10e-6) ** (-1.5)
-        d_phi_rms = d_phi_rms * (wl / 10e-6) ** (-1)
-    else:
-        raise ValueError('RMS mode not recongnized')
+    d_a_rms, d_phi_rms, d_pol_rms, _, _ = rms_frequency_adjust(rms_mode=rms_mode,
+                                                               wl=wl,
+                                                               d_a_rms=d_a_rms,
+                                                               d_phi_rms=d_phi_rms,
+                                                               d_pol_rms=d_pol_rms,
+                                                               d_x_rms=0.,
+                                                               d_y_rms=0.)
 
     d_a_co = pink_noise_co
     d_phi_co = pink_noise_co
     d_pol_co = pink_noise_co
 
-    comp_factor = 1
+    # if rms_mode == 'lay':
+    #     d_a_rms_0 = 0.001
+    #     d_a_rms = d_a_rms_0 * (wl / 10e-6) ** (-1.5)
+    #
+    #     d_phi_rms_0 = 0.001
+    #     d_phi_rms = d_phi_rms_0 * (wl / 10e-6) ** (-1)
+    #
+    #     d_pol_rms = 0.001
+    # elif rms_mode == 'static':
+    #     if (d_a_rms is None) or (d_phi_rms is None):
+    #         raise ValueError('RMS values need to be specified in static mode')
+    # elif rms_mode == 'wavelength':
+    #     if (d_a_rms is None) or (d_phi_rms is None):
+    #         raise ValueError('RMS values need to be specified in wavelength mode')
+    #     d_a_rms = d_a_rms * (wl / 10e-6) ** (-1.5)
+    #     d_phi_rms = d_phi_rms * (wl / 10e-6) ** (-1)
+    # else:
+    #     raise ValueError('RMS mode not recongnized')
 
-    # create pink noise PSDs
-    d_a_freq = np.arange(0, n_sampling_max + 1) * 1 / t_rot
-    d_a_psd = np.append([0], 1 / d_a_freq[1:])
-    d_a_psd = np.array(
-        [d_a_psd * ((d_a_rms / 1) ** 2 / (np.sum(d_a_psd / t_rot)
-                                          + np.log(d_a_co / d_a_freq[int(n_sampling_max)])))
-         for j in range(num_a)])
-    avg_d_a_2 = comp_factor / t_rot * d_a_psd.sum(axis=1)  # by parseval theorem
-    d_a_b_2 = comp_factor / t_rot * d_a_psd
+    d_a_psd, d_a_freq, avg_d_a_2, d_a_b_2 = create_pink_psd(t_rot=t_rot,
+                                                            n_sampling_max=n_sampling_max,
+                                                            harmonic_number_n_sampling_max=harmonic_number_n_sampling_max,
+                                                            rms=d_a_rms,
+                                                            num_a=num_a)
 
-    comp_factor = 1  # factor for the conversion of periodigram to Fourier components
-    d_phi_freq = np.arange(0, n_sampling_max + 1) * 1 / t_rot
-    d_phi_psd = np.append([0], 1 / d_phi_freq[1:])
-    d_phi_psd = d_phi_psd * (
-            d_phi_rms ** 2 / (np.sum(d_phi_psd / t_rot) + np.log(d_phi_co / d_phi_freq[int(n_sampling_max)])))
-    avg_d_phi_2 = comp_factor / t_rot * d_phi_psd.sum()
-    d_phi_b_2 = comp_factor / t_rot * d_phi_psd
+    d_phi_psd, d_phi_freq, avg_d_phi_2, d_phi_b_2 = create_pink_psd(t_rot=t_rot,
+                                                            n_sampling_max=n_sampling_max,
+                                                            harmonic_number_n_sampling_max=harmonic_number_n_sampling_max,
+                                                            rms=d_phi_rms,
+                                                            num_a=1)
 
-    d_pol_freq = np.arange(0, n_sampling_max + 1) * 1 / t_rot
-    d_pol_psd = np.append([0], 1 / d_pol_freq[1:])
-    d_pol_psd = d_pol_psd * (
-            d_pol_rms ** 2 / (np.sum(d_pol_psd / t_rot) + np.log(d_pol_co / d_pol_freq[int(n_sampling_max)])))
-    avg_d_pol_2 = comp_factor / t_rot * d_pol_psd.sum()
-    d_pol_b_2 = comp_factor / t_rot * d_pol_psd
+    d_pol_psd, d_pol_freq, avg_d_pol_2, d_pol_b_2 = create_pink_psd(t_rot=t_rot,
+                                                            n_sampling_max=n_sampling_max,
+                                                            harmonic_number_n_sampling_max=harmonic_number_n_sampling_max,
+                                                            rms=d_pol_rms,
+                                                            num_a=1)
+
+    # comp_factor = 0.5
+    #
+    # # create pink noise PSDs
+    # d_a_freq = np.arange(0, n_sampling_max + 1) * 1 / t_rot
+    # d_a_psd = np.append([0], 1 / d_a_freq[1:])
+    # d_a_psd = np.array(
+    #     [d_a_psd * ((d_a_rms / 1) ** 2 / (np.sum(d_a_psd / t_rot)
+    #                                       + np.log(d_a_co / d_a_freq[int(n_sampling_max)])))
+    #      for j in range(num_a)])
+    # avg_d_a_2 = comp_factor / t_rot * d_a_psd.sum(axis=1)  # by parseval theorem
+    # d_a_b_2 = comp_factor / t_rot * d_a_psd
+    #
+    # comp_factor = 0.5  # factor for the conversion of periodigram to Fourier components
+    # d_phi_freq = np.arange(0, n_sampling_max + 1) * 1 / t_rot
+    # d_phi_psd = np.append([0], 1 / d_phi_freq[1:])
+    # d_phi_psd = d_phi_psd * (
+    #         d_phi_rms ** 2 / (np.sum(d_phi_psd / t_rot) + np.log(d_phi_co / d_phi_freq[int(n_sampling_max)])))
+    # avg_d_phi_2 = comp_factor / t_rot * d_phi_psd.sum()
+    # d_phi_b_2 = comp_factor / t_rot * d_phi_psd
+    #
+    # d_pol_freq = np.arange(0, n_sampling_max + 1) * 1 / t_rot
+    # d_pol_psd = np.append([0], 1 / d_pol_freq[1:])
+    # d_pol_psd = d_pol_psd * (
+    #         d_pol_rms ** 2 / (np.sum(d_pol_psd / t_rot) + np.log(d_pol_co / d_pol_freq[int(n_sampling_max)])))
+    # avg_d_pol_2 = comp_factor / t_rot * d_pol_psd.sum()
+    # d_pol_b_2 = comp_factor / t_rot * d_pol_psd
 
     # noise contribution
     noise_chop = {'wl': wl}
@@ -1360,7 +1463,7 @@ def instrumental_noise_single_wav_chop(mp_arg) -> dict:
 
     # first order dphi
     d_phi_j_hat_2_chop = np.array([(np.abs(planet_template_c_fft) ** 2
-                                    * d_phi_b_2[:len(planet_template_c_fft)]).sum() for j in range(num_a)])
+                                    * d_phi_b_2[int(np.floor(len(d_phi_b_2)/2))-int(np.floor(len(planet_template_c_fft)/2)):int(np.floor(len(d_phi_b_2)/2))+int(np.floor(len(planet_template_c_fft)/2))+1]).sum() for j in range(num_a)])
     noise_chop['sn_fo_phi'] = np.sqrt((c_phi ** 2 * d_phi_j_hat_2_chop).sum() * t_int ** 2)
 
 
@@ -1369,13 +1472,35 @@ def instrumental_noise_single_wav_chop(mp_arg) -> dict:
     d_phi_b_2_f = np.concatenate((np.flip(d_phi_b_2[:nt]), d_phi_b_2[1:], np.zeros(1)))
 
     # Eq (45)
-    d_a_j_phi_k_hat_2_chop = np.array([0.5 * (np.sum(np.abs(planet_template_c_fft[1:]) ** 2 * (
-            np.convolve(np.flip(d_phi_b_2_f[1:-2]), d_a_b_2[j, 1:], mode='valid')
-            + np.array([np.sum(d_a_b_2[j, 1:nt - r] * d_phi_b_2[1 + r:nt]) for r in range(1, nt)])
-            + np.array([d_a_b_2[j, 0] * d_phi_b_2[r] for r in range(1, nt)])))
-                                              + (np.sum(d_a_b_2[j, 1:] * d_phi_b_2[1:]) + d_a_b_2[j, 0] * d_phi_b_2[
-                0] / 2) * np.abs(planet_template_c_fft[0]) ** 2) for j in range(1)])[0]
-    d_a_phi_hat_2_chop = np.ones((num_a, num_a)) * d_a_j_phi_k_hat_2_chop
+    # TODO: decide on implementation
+    j = 0
+    aa = [np.sum(d_a_b_2[j, 1:nt - r] * d_phi_b_2[1 + r:nt]) for r in range(1, nt)]
+    bb = [d_a_b_2[j, 0] * d_phi_b_2[r] for r in range(1, nt)]
+    d_a_j_phi_k_hat_2_chop = np.array(
+        [0.5 * (np.sum(
+            np.abs(planet_template_c_fft[1:]) ** 2 * (
+                    np.convolve(np.flip(d_phi_b_2_f[1:-2]), d_a_b_2[j, 1:], mode='valid')
+                    + np.array(aa)
+                    + np.array(bb)
+            )
+        )
+                + (np.sum(d_a_b_2[j, 1:] * d_phi_b_2[1:]) + d_a_b_2[j, 0] * d_phi_b_2[
+                    0] / 2) * np.abs(planet_template_c_fft[0]) ** 2)
+         for j in range(1)]
+    )[0]
+
+    d_a_j_phi_k_hat_2_chop_alt = equation45(epsilon=np.abs(planet_template_c_fft),
+                                            beta=d_a_b_2[0, :],
+                                            gamma=d_phi_b_2)
+
+    d_a_phi_hat_2_chop = np.ones((num_a, num_a)) * d_a_j_phi_k_hat_2_chop_alt
+    # d_a_j_phi_k_hat_2_chop = np.array([0.5 * (np.sum(np.abs(planet_template_c_fft[1:]) ** 2 * (
+    #         np.convolve(np.flip(d_phi_b_2_f[1:-2]), d_a_b_2[j, 1:], mode='valid')
+    #         + np.array([np.sum(d_a_b_2[j, 1:nt - r] * d_phi_b_2[1 + r:nt]) for r in range(1, nt)])
+    #         + np.array([d_a_b_2[j, 0] * d_phi_b_2[r] for r in range(1, nt)])))
+    #                                           + (np.sum(d_a_b_2[j, 1:] * d_phi_b_2[1:]) + d_a_b_2[j, 0] * d_phi_b_2[
+    #             0] / 2) * np.abs(planet_template_c_fft[0]) ** 2) for j in range(1)])[0]
+    # d_a_phi_hat_2_chop = np.ones((num_a, num_a)) * d_a_j_phi_k_hat_2_chop
 
     noise_chop['sn_so_aphi'] = np.sqrt(np.sum(c_aphi ** 2 * d_a_phi_hat_2_chop) * t_int ** 2)
 
@@ -1385,3 +1510,165 @@ def instrumental_noise_single_wav_chop(mp_arg) -> dict:
     noise_chop['sn'] = np.sqrt(noise_chop['sn_fo_phi'] ** 2 + noise_chop['sn_so_aphi'] ** 2)
 
     return noise_chop
+
+def equation45(epsilon, beta, gamma):
+    '''
+    Implementation of equation 45 from the lay 2004
+    Parameters
+    ----------
+    epsilon
+        only the positive components of the Fourier transform of the planet
+    beta
+        only the positive components of <|beta|^2> including 0
+    gamma
+        only the positive components of <|gamma|^2> including 0
+
+    Returns
+    -------
+
+    '''
+    max_r = int((epsilon.shape[0]-1)/2)
+
+    beta_pad = np.concatenate((np.zeros(max_r),
+                               beta,
+                               np.zeros(max_r)))
+
+    return np.sum(epsilon**2 * np.convolve(beta_pad, gamma, mode='valid'))
+
+def create_pink_psd(t_rot: float,
+                    n_sampling_max: int,
+                    harmonic_number_n_sampling_max: int,
+                    rms: float,
+                    num_a: int):
+    '''
+    Create a pink noise PSD
+    Parameters
+    ----------
+    t_rot
+        Total rotation time of array, fixes the maximum frequency
+    n_sampling_max
+        Number of frequency samples
+    harmonic_number_n_sampling_max
+        Harmonic number (truncated harmonic series) of n_sampling_max
+    rms
+        RMS of the pink noise
+
+    Returns
+    -------
+
+    '''
+    # create frequency array
+    freq = np.arange(0, n_sampling_max + 1) * 1 / t_rot
+
+    # pink noise PSD, remove the DC component
+    psd = np.append([0], 1 / freq[1:]) * rms ** 2 / harmonic_number_n_sampling_max
+
+    # mirror the frequency array and PSD array
+    freq = np.concatenate((-np.flip(freq[1:]), freq))
+    psd = np.concatenate((np.flip(psd[1:]), psd))
+
+    if num_a != 1:
+        psd = np.tile(psd, (num_a, 1))
+        avg_2 = psd.sum(axis=1) / (2 * t_rot)  # by parseval theorem
+    else:
+        avg_2 = psd.sum(axis=0) / (2 * t_rot)  # by parseval theorem
+    b_2 = psd / (2 * t_rot)
+
+    return psd, freq, avg_2, b_2
+
+def create_white_psd(cutoff_freq: float,
+                     t_rot: float,
+                     rms: float):
+    '''
+    Create a white noise PSD
+    Parameters
+    ----------
+    cutoff_freq
+        Cutoff frequency in 1/s
+    t_rot
+        Total rotation time of array
+    rms
+        RMS of the white noise
+
+    Returns
+    -------
+
+    '''
+    freq = np.arange(0, cutoff_freq, step=1 / t_rot)
+
+    # create white noise psd
+    psd = np.ones_like(freq) * rms ** 2 * t_rot / (len(freq) - 1)
+
+    # remove the DC component
+    psd[0] = 0
+
+    # mirror the frequency array and PSD array
+    freq = np.concatenate((-np.flip(freq[1:]), freq))
+    psd = np.concatenate((np.flip(psd[1:]), psd))
+
+    avg_2 = psd.sum(axis=0) / 2 / t_rot
+    b_2 = psd / 2 / t_rot
+
+    return psd, freq, avg_2, b_2
+
+
+def rms_frequency_adjust(rms_mode: str,
+                         wl: float,
+                         d_a_rms: float,
+                         d_phi_rms: float,
+                         d_pol_rms:float,
+                         d_x_rms: float,
+                         d_y_rms:float):
+    '''
+    Adjust the RMS values to the wavelength in use.
+
+    Parameters
+    ----------
+    rms_mode
+        'lay': uses the rms values specified in lay 2004 and ignores the input rms values
+        'static': returns the input rms values
+        'wavelength': scales the input rms values to the wavelength. For amplitude noise, the
+        scaling is lamnda^-1.5, for phase noise, the scaling is lambda^-1
+    wl
+        wavelength in m
+    d_a_rms
+        amplitude noise spectrum rms
+    d_phi_rms
+        phase noise spectrum rms
+
+    Returns
+    -------
+
+    '''
+    # create noise PSD
+    if rms_mode == 'lay':
+        d_a_rms_0 = 0.001
+        d_a_rms = d_a_rms_0 * (wl / 10e-6) ** (-1.5)
+
+        d_phi_rms_0 = 0.001
+        d_phi_rms = d_phi_rms_0 * (wl / 10e-6) ** (-1)
+
+        d_pol_rms = 0.001
+        d_x_rms = 0.01
+        d_y_rms = 0.01
+    elif rms_mode == 'static':
+        if (d_a_rms is None) or (d_phi_rms is None):
+            raise ValueError('RMS values need to be specified in static mode')
+    elif rms_mode == 'wavelength':
+        if (d_a_rms is None) or (d_phi_rms is None):
+            raise ValueError('RMS values need to be specified in wavelength mode')
+        d_a_rms = d_a_rms * (wl / 10e-6) ** (-1.5)
+        d_phi_rms = d_phi_rms * (wl / 10e-6) ** (-1)
+    else:
+        raise ValueError('RMS mode not recongnized')
+
+    return d_a_rms, d_phi_rms, d_pol_rms, d_x_rms, d_y_rms
+
+def harmonic_number_approximation(n):
+    """Returns an approximate value of n-th harmonic number.
+
+       http://en.wikipedia.org/wiki/Harmonic_number
+    """
+    # Euler-Mascheroni constant
+    gamma = 0.57721566490153286060651209008240243104215933593992
+    return gamma + np.log(n) + 0.5/n - 1./(12*n**2) + 1./(120*n**4)
