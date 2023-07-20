@@ -1371,7 +1371,7 @@ def instrumental_noise_single_wav_chop(mp_arg) -> dict:
     pink_noise_co = mp_arg['pink_noise_co']
 
     planet_template_c_fft = rfft(planet_template_chop)
-    planet_template_c_fft = planet_template_c_fft / len(planet_template_chop)
+    #planet_template_c_fft = planet_template_c_fft / len(planet_template_chop)
 
     # mirror the planet template
     planet_template_c_fft = np.concatenate((np.flip(planet_template_c_fft[1:]), planet_template_c_fft))
@@ -1515,7 +1515,7 @@ def create_pink_psd(t_rot: float,
     freq = np.arange(0, n_sampling_max + 1) * 1 / t_rot
 
     # pink noise PSD, remove the DC component
-    psd = np.append([0], 1 / freq[1:]) * rms ** 2 / harmonic_number_n_sampling_max
+    psd = np.append([0], 1 / freq[1:]) * 2 * rms ** 2 * n_sampling_max ** 2 / harmonic_number_n_sampling_max
 
     # mirror the frequency array and PSD array
     freq = np.concatenate((-np.flip(freq[1:]), freq))
@@ -1523,11 +1523,9 @@ def create_pink_psd(t_rot: float,
 
     if num_a != 1:
         psd = np.tile(psd, (num_a, 1))
-        avg_2 = psd.sum(axis=1) / (2 * t_rot)  # by parseval theorem
-    else:
-        avg_2 = psd.sum(axis=0) / (2 * t_rot)  # by parseval theorem
-    b_2 = psd / (2 * t_rot)
 
+    b_2 = psd / (2 * t_rot)
+    avg_2 = np.sum(b_2, axis=-1) / b_2.shape[-1] ** 2  # by parseval theorem
     return psd, freq, avg_2, b_2
 
 def create_white_psd(cutoff_freq: float,
@@ -1551,7 +1549,7 @@ def create_white_psd(cutoff_freq: float,
     freq = np.arange(0, cutoff_freq, step=1 / t_rot)
 
     # create white noise psd
-    psd = np.ones_like(freq) * rms ** 2 * t_rot / (len(freq) - 1)
+    psd = np.ones_like(freq) * rms ** 2 * t_rot * (len(freq) - 1) * 4
 
     # remove the DC component
     psd[0] = 0
@@ -1560,8 +1558,8 @@ def create_white_psd(cutoff_freq: float,
     freq = np.concatenate((-np.flip(freq[1:]), freq))
     psd = np.concatenate((np.flip(psd[1:]), psd))
 
-    avg_2 = psd.sum(axis=0) / 2 / t_rot
     b_2 = psd / 2 / t_rot
+    avg_2 = np.sum(b_2) / len(b_2) ** 2
 
     return psd, freq, avg_2, b_2
 
