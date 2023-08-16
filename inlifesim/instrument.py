@@ -1515,7 +1515,7 @@ def create_pink_psd(t_rot: float,
     freq = np.arange(0, n_sampling_max + 1) * 1 / t_rot
 
     # pink noise PSD, remove the DC component
-    psd = np.append([0], 1 / freq[1:]) * 2 * rms ** 2 * n_sampling_max ** 2 / harmonic_number_n_sampling_max
+    psd = np.append([0], 1 / freq[1:]) * 4 * rms ** 2 * n_sampling_max ** 2 / harmonic_number_n_sampling_max
 
     # mirror the frequency array and PSD array
     freq = np.concatenate((-np.flip(freq[1:]), freq))
