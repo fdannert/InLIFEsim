@@ -1,7 +1,9 @@
 from typing import Union
+from functools import wraps
+import inspect
 
 import numpy as np
-
+from scipy.fft import rfft
 
 def find_nearest_idx(array, value):
     array = np.asarray(array)
@@ -143,3 +145,106 @@ def black_body(mode: str,
         raise ValueError('Mode not recognised')
 
     return fgamma
+
+def harmonic_number_approximation(n):
+    """Returns an approximate value of n-th harmonic number.
+
+       http://en.wikipedia.org/wiki/Harmonic_number
+    """
+    # Euler-Mascheroni constant
+    gamma = 0.57721566490153286060651209008240243104215933593992
+
+    return gamma + np.log(n) + 0.5/n - 1./(12*n**2) + 1./(120*n**4)
+
+def temp2freq_fft(time_series: np.ndarray,
+                  total_time: float):
+    """
+    Fourier series from time to frequency space convention using fft
+
+    Parameters
+    ----------
+    time_series : np.ndarray
+        The time series that is to be converted to Fourier space
+    total_time : float
+        The total time of the time series in [s]
+
+    Returns
+    -------
+    fourier_series : np.ndarray
+        The Fourier series of the time series
+    """
+
+    # note to self: rfft automatically does the Fourier transform on the -1
+    # axis
+    fourier_series = rfft(time_series)
+    fourier_series = np.concatenate((
+        np.conjugate(
+            np.flip(
+                np.delete(
+                    fourier_series, obj=0, axis=-1
+                ), axis=-1
+            )
+        ), fourier_series
+    ),
+    axis=-1)
+    fourier_series *= (total_time / fourier_series.shape[-1])
+
+    return fourier_series
+
+def freq2temp_fft(fourier_series: np.ndarray,
+                  total_time: float):
+    """
+    Fourier series from frequency to time space convention using fft
+
+    Parameters
+    ----------
+    fourier_series : np.ndarray
+        The Fourier series that is to be converted to temporal space
+    total_time : float
+        The total time of the time series in [s]
+
+    Returns
+    -------
+    time_series : np.ndarray
+        The time series of the Fourier series
+    """
+    n = fourier_series.shape[-1]
+    fourier_series = np.delete(fourier_series,
+                               obj=np.arange(int(fourier_series.shape[-1]/2)),
+                               axis=-1)
+    time_series = np.fft.irfft(fourier_series, n=n)
+    time_series *= (time_series.shape[-1] / total_time)
+
+    return time_series
+
+
+def freq2temp_ft(fourier_series: np.ndarray,
+                 total_time: float):
+    """
+    Exact Fourier series convention from frequency to time space
+
+    Parameters
+    ----------
+    fourier_series : np.ndarray
+        The Fourier series that is to be converted to time space
+    total_time : float
+        The total time of the time series in [s]
+
+    Returns
+    -------
+    time_series : np.ndarray
+        The time series of the Fourier series
+    """
+    time_series = [
+        1 / total_time * np.sum(
+            fourier_series * np.exp(
+                2 * np.pi * 1j * n
+                * np.arange(-(fourier_series.shape[-1]-1)/2,
+                            (fourier_series.shape[-1])/2, 1)
+                / fourier_series.shape[-1]
+            ),
+            axis=-1
+        ) for n in np.arange(0, fourier_series.shape[-1], 1)]
+
+    return np.swapaxes(np.array(time_series).real, 0, -1)
+
