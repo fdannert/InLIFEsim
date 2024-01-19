@@ -69,7 +69,8 @@ class Instrument(object):
                  wl_resolution: int = 200,
                  flux_planet: np.ndarray = None,
                  simultaneous_chopping: bool = False,
-                 verbose: bool = False
+                 verbose: bool = False,
+                 draw_samples: bool = False
                  ):
         '''
         Observatory instance to calculate instrumental noise. TODO: add example
@@ -192,6 +193,7 @@ class Instrument(object):
         '''
 
         self.verbose = verbose
+        self.draw_samples = draw_samples
 
         # setting simulation parameters
         self.wl_bins = wl_bins
@@ -737,7 +739,6 @@ class Instrument(object):
             print('Doing the next thing ...', end=' ')
 
         self.sn_chop()
-
 
 
         a=1

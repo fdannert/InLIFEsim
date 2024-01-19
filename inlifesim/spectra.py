@@ -2,6 +2,8 @@ from typing import Union
 
 import numpy as np
 
+from inlifesim.util import freq2temp_fft
+
 def rms_frequency_adjust(rms_mode: str,
                          wl: float,
                          d_a_rms: Union[float, type(None)],
@@ -104,16 +106,70 @@ def create_pink_psd(t_rot: float,
         The power of the Fourier components corresponding to the PSD
     '''
 
-    psd = (rms ** 2 * t_rot
-           / harmonic_number_n_cutoff / np.arange(0, n_sampling_max+1))
+    psd = (2 * rms ** 2 * t_rot ** 3 / (2 * n_sampling_max) ** 2
+           / harmonic_number_n_cutoff / np.arange(0, n_sampling_max + 1))
     psd[0] = 0
     psd = np.concatenate((np.flip(psd[1:]), psd))
 
     if num_a != 1:
         psd = np.tile(psd, (num_a, 1))
 
-    b_2 = t_rot * psd
+    b_2 = (2 * n_sampling_max) ** 2 / t_rot * psd
 
     avg_2 = np.sum(b_2, axis=-1) / t_rot ** 4
 
     return psd, avg_2, b_2
+
+def draw_fourier_noise(psd: np.ndarray,
+                       n_sampling_rot: int,
+                       t_rot: float,
+                       n_draws: int):
+    '''
+    Draw Fourier series from a given power spectral density (PSD). The output
+    shape will be (n_draws, n_sampling_rot). Can be used to generate a
+    realisation of the perturbation random variables.
+
+    Parameters
+    ----------
+    psd
+        Power spectral density
+    n_sampling_rot
+        Number of samples (exposures) per rotation of the array
+    t_rot
+        Array rotation period in [s]
+    n_draws
+        Number of times the experiment is drawn
+
+    Returns
+    -------
+    x
+        The temporal series.
+    x_ft
+        The Fourier series in frequency space
+    '''
+
+    x_ft = (np.random.normal(loc=0,
+                             scale=n_sampling_rot * np.sqrt(
+                                 psd[np.newaxis,
+                                 int((psd.shape[-1] - 1) / 2)::]
+                                 / 2 / t_rot
+                             ),
+                             size=(n_draws,
+                                   int((psd.shape[-1] + 1) / 2)))
+            + 1j * np.random.normal(loc=0,
+                                    scale=n_sampling_rot * np.sqrt(
+                                        psd[np.newaxis,
+                                        int((psd.shape[-1] - 1) / 2)::]
+                                        / 2 / t_rot
+                                    ),
+                                    size=(n_draws,
+                                          int((psd.shape[-1] + 1) / 2)))
+            )
+
+    x_ft = np.concatenate((np.flip(x_ft[:, 1:], axis=-1), x_ft),
+                          axis=-1)
+
+    x = freq2temp_fft(fourier_series=x_ft,
+                      total_time=t_rot)
+
+    return x, x_ft
