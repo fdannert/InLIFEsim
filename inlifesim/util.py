@@ -248,3 +248,27 @@ def freq2temp_ft(fourier_series: np.ndarray,
 
     return np.swapaxes(np.array(time_series).real, 0, -1)
 
+
+def dict_sumover(d: dict,
+                    keys: list):
+        """
+        Sums over the values of a dictionary for a given set of keys
+
+        Parameters
+        ----------
+        d : dict
+            The dictionary that is to be summed over
+        keys : list
+            The keys for which the values are summed over
+
+        Returns
+        -------
+        sum : float
+            The sum of the values of the dictionary for the given keys
+        """
+
+        sum = np.zeros_like(d[keys[0]])
+        for key in keys:
+            sum += d[key]
+
+        return sum

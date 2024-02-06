@@ -1,8 +1,11 @@
 from typing import Union
 import multiprocessing as mp
+from collections import defaultdict
 
 import numpy as np
 import pandas as pd
+from joblib import Parallel, delayed, parallel_config
+from joblib_progress import joblib_progress
 
 from inlifesim.util import harmonic_number_approximation
 from inlifesim.sources import (create_star, create_planet, create_localzodi,
@@ -10,7 +13,8 @@ from inlifesim.sources import (create_star, create_planet, create_localzodi,
 from inlifesim.perturbation import (stellar_leakage, exozodi_leakage,
                                     localzodi_leakage, sys_noise_chop)
 from inlifesim.signal import planet_signal, fundamental_noise
-from inlifesim.spectra import rms_frequency_adjust
+from inlifesim.spectra import rms_frequency_adjust, create_pink_psd
+from inlifesim.statistics import draw_sample
 
 class Instrument(object):
 
@@ -66,6 +70,8 @@ class Instrument(object):
                  d_pol_co: Union[float, type(None)] = None,
                  d_x_co: Union[float, type(None)] = None,
                  d_y_co: Union[float, type(None)] = None,
+                 n_draws: Union[int, type(None)] = None,
+                 n_draws_per_run: Union[int, type(None)] = None,
                  wl_resolution: int = 200,
                  flux_planet: np.ndarray = None,
                  simultaneous_chopping: bool = False,
@@ -194,6 +200,11 @@ class Instrument(object):
 
         self.verbose = verbose
         self.draw_samples = draw_samples
+        self.n_draws = n_draws
+        self.n_draws_per_run = n_draws_per_run
+
+        if self.draw_samples and (n_draws is None):
+            raise ValueError('Sample size must be set in sampling mode')
 
         # setting simulation parameters
         self.wl_bins = wl_bins
@@ -217,6 +228,10 @@ class Instrument(object):
         self.phi = phase_response
         self.phi_r = phase_response_chop
         self.diameter_ap = diameter_ap
+
+        # currently hardcoded to a Double-Bracewell beam combiner design, but
+        # implemented to be changed in the future
+        self.n_outputs = 2
 
         self.throughput = throughput
         self.flux_division = flux_division
@@ -395,7 +410,7 @@ class Instrument(object):
                      'sn',  # systematic noise
                      'fundamental',  # fundamental noise (astrophysical)
                      'instrumental',  # instrumental noise
-                     'snr'  # signal to noise ratio
+                     'snr' # signal to noise ratio
                      ],
             index=[str(np.round(wl * 1e6, 2)) for wl in self.wl_bins]
         )
@@ -443,6 +458,8 @@ class Instrument(object):
     def combine_coefficients(self):
         self.grad_n_coeff = []
         self.hess_n_coeff = []
+        self.grad_n_coeff_chop = []
+        self.hess_n_coeff_chop = []
         for i in range(len(self.wl_bins)):
             self.grad_n_coeff.append({k: self.grad_star[k][i]
                                          + self.grad_ez[k][i]
@@ -450,6 +467,14 @@ class Instrument(object):
                                       for k in self.grad_star.keys()})
             self.hess_n_coeff.append({k: self.hess_star[k][i]
                                          + self.hess_ez[k][i]
+                                      for k in self.hess_star.keys()})
+
+            self.grad_n_coeff_chop.append({k: self.grad_star_chop[k][i]
+                                         + self.grad_ez_chop[k][i]
+                                         + self.grad_lz[k][i]
+                                      for k in self.grad_star.keys()})
+            self.hess_n_coeff_chop.append({k: self.hess_star_chop[k][i]
+                                         + self.hess_ez_chop[k][i]
                                       for k in self.hess_star.keys()})
 
     def build_gradient_hessian(
@@ -625,6 +650,91 @@ class Instrument(object):
                                                 
         '''
 
+
+    def draw_time_series(self):
+        '''
+        Draw samples from noise distributions
+        :return:
+        '''
+
+        if len(self.wl_bins) != 1:
+            raise ValueError('Time series sampling is currently only supported '
+                             'in single wavelength channels')
+
+        d_a_rms, d_phi_rms, _, _, _ = rms_frequency_adjust(
+            rms_mode=self.rms_mode,
+            wl=self.wl_bins[0],
+            d_a_rms=self.d_a_rms,
+            d_phi_rms=self.d_phi_rms,
+            d_pol_rms=self.d_pol_rms,
+            d_x_rms=self.d_x_rms,
+            d_y_rms=self.d_y_rms
+        )
+
+        # calculate the PSDs of the perturbation terms
+        self.d_a_psd, _, _ = create_pink_psd(
+            t_rot=self.t_rot,
+            n_sampling_max=int(self.n_sampling_rot / 2),
+            harmonic_number_n_cutoff=self.harmonic_number_n_cutoff['a'],
+            rms=d_a_rms,
+            num_a=self.num_a
+        )
+
+        self.d_phi_psd, _, _ = create_pink_psd(
+            t_rot=self.t_rot,
+            n_sampling_max=int(self.n_sampling_rot / 2),
+            harmonic_number_n_cutoff=self.harmonic_number_n_cutoff['phi'],
+            rms=d_phi_rms,
+            num_a=self.num_a
+        )
+
+        params = {'n_sampling_rot': self.n_sampling_rot,
+                  'n_outputs': self.n_outputs,
+                  'pn_sgl': self.photon_rates_nchop['pn_sgl'],
+                  'pn_ez': self.photon_rates_nchop['pn_ez'],
+                  'pn_lz': self.photon_rates_nchop['pn_lz'],
+                  'd_a_psd': self.d_a_psd,
+                  'd_phi_psd': self.d_phi_psd,
+                  't_rot': self.t_rot,
+                  'gradient': self.grad_n_coeff[0],
+                  'gradient_chop': self.grad_n_coeff_chop[0],
+                  'hessian': self.hess_n_coeff[0],
+                  'hessian_chop': self.hess_n_coeff_chop[0],
+                  'planet_signal': self.planet_signal_chop,
+                  'planet_template': self.planet_template_chop}
+
+        if self.n_cpu == 1:
+            params['n_draws'] = self.n_draws
+            self.time_samples = draw_sample(params=params,
+                                            return_variables='all')
+        else:
+            params['n_draws'] = self.n_draws_per_run
+            with parallel_config(
+                    backend="loky",
+                    inner_max_num_threads=1
+            ), joblib_progress(
+                description="Calculating time series ...",
+                total=int(self.n_draws / self.n_draws_per_run)
+            ):
+                results = Parallel(
+                    n_jobs=self.n_cpu
+                )(delayed(draw_sample)(
+                    params=params,
+                    return_variables='all'
+                ) for _ in range(int(self.n_draws / self.n_draws_per_run)))
+
+            # combine the results dicts into single dict
+            self.time_samples = defaultdict(list)
+            for d in results:  # you can list as many input dicts as you want here
+                for key, value in d.items():
+                    if len(self.time_samples[key]) == 0:
+                        self.time_samples[key] = value
+                    else:
+                        if len(self.time_samples[key].shape) == 1:
+                            self.time_samples[key] = np.concatenate((self.time_samples[key], value))
+                        else:
+                            self.time_samples[key] = np.concatenate((self.time_samples[key], value), axis=1)
+
     def run(self) -> None:
         self.instrumental_parameters()
 
@@ -679,10 +789,28 @@ class Instrument(object):
             num_a=self.num_a
         )
 
-        self.grad_ez, self.hess_ez = exozodi_leakage(A=self.A,
-                                                     phi=self.phi,
-                                                     b_ez=self.b_ez,
-                                                     num_a=self.num_a)
+        self.grad_star_chop, self.hess_star_chop = stellar_leakage(
+            A=self.A,
+            phi=self.phi_r,
+            b_star=self.b_star,
+            db_star_dx=self.db_star_dx,
+            db_star_dy=self.db_star_dy,
+            num_a=self.num_a
+        )
+
+        self.grad_ez, self.hess_ez = exozodi_leakage(
+            A=self.A,
+            phi=self.phi,
+            b_ez=self.b_ez,
+            num_a=self.num_a
+        )
+
+        self.grad_ez_chop, self.hess_ez_chop = exozodi_leakage(
+            A=self.A,
+            phi=self.phi_r,
+            b_ez=self.b_ez,
+            num_a=self.num_a
+        )
 
         self.grad_lz = localzodi_leakage(A=self.A,
                                          omega=self.omega,
@@ -699,7 +827,7 @@ class Instrument(object):
          _,
          self.planet_template_chop,
          self.photon_rates_chop['signal'],
-         _) = planet_signal(
+         self.planet_signal_chop) = planet_signal(
             flux_planet=self.flux_planet,
             A=self.A,
             phi=self.phi,
@@ -737,6 +865,9 @@ class Instrument(object):
         if self.verbose:
             print('[Done]')
             print('Doing the next thing ...', end=' ')
+
+        if self.draw_samples:
+            self.draw_time_series()
 
         self.sn_chop()
 
