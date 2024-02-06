@@ -710,6 +710,10 @@ class Instrument(object):
             self.time_samples = draw_sample(params=params,
                                             return_variables=self.time_samples_return_values)
         else:
+            if self.verbose:
+                print('')
+                print('Drawing time series in multiprocessing')
+
             params['n_draws'] = self.n_draws_per_run
             with parallel_config(
                     backend="loky",
@@ -725,17 +729,34 @@ class Instrument(object):
                     return_variables=self.time_samples_return_values
                 ) for _ in range(int(self.n_draws / self.n_draws_per_run)))
 
+            if self.verbose:
+                print('Combining results ...', end=' ')
+
             # combine the results dicts into single dict
-            self.time_samples = defaultdict(list)
-            for d in results:  # you can list as many input dicts as you want here
-                for key, value in d.items():
-                    if len(self.time_samples[key]) == 0:
-                        self.time_samples[key] = value
-                    else:
-                        if len(self.time_samples[key].shape) == 1:
-                            self.time_samples[key] = np.concatenate((self.time_samples[key], value))
-                        else:
-                            self.time_samples[key] = np.concatenate((self.time_samples[key], value), axis=1)
+            # create empty dict with the same keys as the first result and properly sized arrays
+            self.time_samples = {}
+            time_samples_head = {}
+            for k in results[0].keys():
+                size = np.array(results[0][k].shape)
+                size[np.argwhere(size == self.n_draws_per_run)] = self.n_draws
+                self.time_samples[k] = np.zeros(size)
+                time_samples_head[k] = 0
+
+            # fill the arrays with the results
+            for r in results:
+                for k in r.keys():
+                    size = np.array(r[k].shape)
+                    axis = np.argwhere(size == self.n_draws_per_run)
+
+                    put = [slice(None) for _ in range(len(size))]
+                    put[axis[0][0]] = slice(time_samples_head[k], time_samples_head[k] + self.n_draws_per_run)
+                    put = tuple(put)
+
+                    self.time_samples[k][put] = r[k]
+                    time_samples_head[k] += self.n_draws_per_run
+
+            if self.verbose:
+                print('[Done]')
 
     def run(self) -> None:
         self.instrumental_parameters()
@@ -866,10 +887,13 @@ class Instrument(object):
 
         if self.verbose:
             print('[Done]')
-            print('Doing the next thing ...', end=' ')
 
         if self.draw_samples:
+            if self.verbose:
+                print('Drawing the time series ...', end=' ')
             self.draw_time_series()
+            if self.verbose:
+                print('[Done]')
 
         self.sn_chop()
 
