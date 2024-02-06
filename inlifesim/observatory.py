@@ -72,6 +72,7 @@ class Instrument(object):
                  d_y_co: Union[float, type(None)] = None,
                  n_draws: Union[int, type(None)] = None,
                  n_draws_per_run: Union[int, type(None)] = None,
+                 time_series_return_values: Union[str, list] = 'all',
                  wl_resolution: int = 200,
                  flux_planet: np.ndarray = None,
                  simultaneous_chopping: bool = False,
@@ -202,6 +203,7 @@ class Instrument(object):
         self.draw_samples = draw_samples
         self.n_draws = n_draws
         self.n_draws_per_run = n_draws_per_run
+        self.time_samples_return_values = time_series_return_values
 
         if self.draw_samples and (n_draws is None):
             raise ValueError('Sample size must be set in sampling mode')
@@ -706,7 +708,7 @@ class Instrument(object):
         if self.n_cpu == 1:
             params['n_draws'] = self.n_draws
             self.time_samples = draw_sample(params=params,
-                                            return_variables='all')
+                                            return_variables=self.time_samples_return_values)
         else:
             params['n_draws'] = self.n_draws_per_run
             with parallel_config(
@@ -720,7 +722,7 @@ class Instrument(object):
                     n_jobs=self.n_cpu
                 )(delayed(draw_sample)(
                     params=params,
-                    return_variables='all'
+                    return_variables=self.time_samples_return_values
                 ) for _ in range(int(self.n_draws / self.n_draws_per_run)))
 
             # combine the results dicts into single dict

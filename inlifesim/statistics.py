@@ -97,6 +97,33 @@ def draw_sample(params,
     rdict['xcorr'] = np.sum(rdict['timeseries'] * params['planet_template'],
                             axis=-1)
 
+    if return_variables == 'all_xcorr':
+        vartypes = ['', '_pn_sgl', '_pn_ez', '_pn_lz',
+                    '_a', '_phi', '_aphi', '_aa', '_phiphi']
+        return_variables = ['xcorr' + vt for vt in vartypes]
+
+    # filter all return variables that contain xcorr in their strings
+    xcorr_requested = [k for k in return_variables if 'xcorr' in k]
+    try:
+        xcorr_requested.remove('xcorr')
+    except ValueError:
+        pass
+    for xc_type in xcorr_requested:
+        if 'pn' in xc_type:
+            rdict[xc_type] = np.sum(
+                np.diff(rdict[xc_type.split(sep='_', maxsplit=1)[1] + '_time'],
+                        axis=0)[0]
+                * params['planet_template'],
+                axis=-1
+            )
+        else:
+            rdict[xc_type] = np.sum(
+                rdict['sys_' + xc_type.split(sep='_')[1]]
+                - rdict['sys_' + xc_type.split(sep='_')[1] + '_chop']
+                * params['planet_template'],
+                axis=-1
+            )
+
     if return_variables == 'all':
         return rdict
     else:
