@@ -97,9 +97,9 @@ def draw_sample(params,
     rdict['xcorr'] = np.sum(rdict['timeseries'] * params['planet_template'],
                             axis=-1)
 
-    if return_variables == 'all_xcorr':
-        vartypes = ['', '_pn_sgl', '_pn_ez', '_pn_lz',
-                    '_a', '_phi', '_aphi', '_aa', '_phiphi']
+    vartypes = ['', '_pn', '_sys', '_pn_sgl', '_pn_ez', '_pn_lz',
+                '_a', '_phi', '_aphi', '_aa', '_phiphi']
+    if (return_variables == 'all_xcorr') or (return_variables == 'all'):
         return_variables = ['xcorr' + vt for vt in vartypes]
 
     # filter all return variables that contain xcorr in their strings
@@ -109,7 +109,21 @@ def draw_sample(params,
     except ValueError:
         pass
     for xc_type in xcorr_requested:
-        if 'pn' in xc_type:
+        if xc_type == 'xcorr_pn':
+            rdict[xc_type] = np.sum(
+                (rdict['pn_timeseries'][0]
+                 - rdict['pn_timeseries'][1])
+                * params['planet_template'],
+                axis=-1
+            )
+        elif xc_type == 'xcorr_sys':
+            rdict[xc_type] = np.sum(
+                (rdict['sys_timeseries']
+                 - rdict['sys_timeseries_chop'])
+                * params['planet_template'],
+                axis=-1
+            )
+        elif 'pn' in xc_type:
             rdict[xc_type] = np.sum(
                 np.diff(rdict[xc_type.split(sep='_', maxsplit=1)[1] + '_time'],
                         axis=0)[0]
@@ -118,8 +132,8 @@ def draw_sample(params,
             )
         else:
             rdict[xc_type] = np.sum(
-                rdict['sys_' + xc_type.split(sep='_')[1]]
-                - rdict['sys_' + xc_type.split(sep='_')[1] + '_chop']
+                (rdict['sys_' + xc_type.split(sep='_')[1]]
+                 - rdict['sys_' + xc_type.split(sep='_')[1] + '_chop'])
                 * params['planet_template'],
                 axis=-1
             )
