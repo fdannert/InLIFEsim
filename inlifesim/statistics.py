@@ -6,7 +6,7 @@ from scipy.stats import rv_continuous, norm, linregress
 from scipy.interpolate import UnivariateSpline, Akima1DInterpolator
 import matplotlib.pyplot as plt
 
-from inlifesim.util import freq2temp_fft, dict_sumover
+from inlifesim.util import freq2temp_fft, dict_sumover, remove_non_increasing
 
 
 def draw_sample(params,
@@ -284,10 +284,12 @@ class imb_gen(rv_continuous):
         if self.ppf_spline is None:
             # Generate some points
             x = np.linspace(-30, 30, 1000)
-            y = self._cdf(x, *args)
+            if len(np.array(args).shape) != 1:
+                args = args[0][0]
+            y = self.cdf(x, args)
 
             # select only the values from y that are strictly increasing
-            y, x = make_strictly_increasing(y, x)
+            y, x = remove_non_increasing(y, x)
 
             # Fit a polynomial to the function
             self.ppf_spline = Akima1DInterpolator(y, x)
@@ -298,14 +300,6 @@ class imb_gen(rv_continuous):
 
 imb = imb_gen(name='imb', shapes='n')
 
-def make_strictly_increasing(arr1, arr2):
-    epsilon = 1e-10
-    for i in range(1, len(arr1)):
-        if arr1[i] <= arr1[i-1]:
-            increment = arr1[i-1] + epsilon - arr1[i]
-            arr1[i] += increment
-            arr2[i] += increment
-    return arr1, arr2
 
 def get_qq(data: np.ndarray,
            loc: float,

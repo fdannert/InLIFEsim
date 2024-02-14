@@ -272,3 +272,36 @@ def dict_sumover(d: dict,
             sum += d[key]
 
         return sum
+
+
+def remove_non_increasing(arr1, arr2):
+    """
+    This function takes two numpy arrays as input and returns two new arrays
+    that only include the elements such that the first array is strictly
+    increasing.
+
+    Parameters:
+    arr1 (numpy.ndarray): The first input array.
+    arr2 (numpy.ndarray): The second input array.
+
+    Returns:
+    tuple: A tuple containing the new arrays with strictly increasing elements.
+    """
+    # Initialize an empty list to store the strictly increasing values
+    arr1_inc = []
+    arr2_inc = []
+
+    # Iterate over the array
+    for i in range(len(arr1)):
+        # If this is the first element or the current element is greater than
+        # the previous one
+        if i == 0 or arr1[i] > arr1[i-1]:
+            # Add the current element to the list
+            arr1_inc.append(arr1[i])
+            arr2_inc.append(arr2[i])
+
+    # Convert the list back to a numpy array
+    arr1_inc = np.array(arr1_inc)
+    arr2_inc = np.array(arr2_inc)
+
+    return arr1_inc, arr2_inc
