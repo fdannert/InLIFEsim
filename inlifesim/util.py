@@ -291,14 +291,17 @@ def remove_non_increasing(arr1, arr2):
     arr1_inc = []
     arr2_inc = []
 
+    arr1_inc.append(arr1[0])
+    arr2_inc.append(arr2[0])
+
     # Iterate over the array
-    for i in range(len(arr1)):
+    for i in range(len(arr1)-1):
         # If this is the first element or the current element is greater than
         # the previous one
-        if i == 0 or arr1[i] > arr1[i-1]:
+        if arr1[i+1] > arr1_inc[-1]:
             # Add the current element to the list
-            arr1_inc.append(arr1[i])
-            arr2_inc.append(arr2[i])
+            arr1_inc.append(arr1[i+1])
+            arr2_inc.append(arr2[i+1])
 
     # Convert the list back to a numpy array
     arr1_inc = np.array(arr1_inc)
