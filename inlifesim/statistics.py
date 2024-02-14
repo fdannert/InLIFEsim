@@ -270,30 +270,42 @@ def draw_fourier_noise(psd: np.ndarray,
     return x, x_ft
 
 
-class imb(rv_continuous):
-    def __init__(self, n, loc=0, scale=0, *args, **kwargs):
+class imb_gen(rv_continuous):
+    def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self.n = n
-        self.loc = loc
-        self.scale = scale
         self.ppf_spline = None
-
-    def _pdf(self, x):
-        pdf = ((2 ** (0.5 * (1 - self.n)) * np.abs(x) ** (0.5 * (self.n-1)) * kv(0.5 * (self.n - 1), np.abs(x)))
-               / (np.sqrt(np.pi) * gamma(self.n / 2)))
+    def _pdf(self, x, *args):
+        n = args[0]
+        pdf = ((2 ** (0.5 * (1 - n)) * np.abs(x) ** (0.5 * (n-1)) * kv(0.5 * (n - 1), np.abs(x)))
+               / (np.sqrt(np.pi) * gamma(n / 2)))
         return pdf
 
-    def _ppf(self, q):
+    def _ppf(self, q, *args):
         if self.ppf_spline is None:
             # Generate some points
             x = np.linspace(-30, 30, 1000)
-            y = self._cdf(x)
+            y = self._cdf(x, *args)
+
+            # select only the values from y that are strictly increasing
+            y, x = make_strictly_increasing(y, x)
 
             # Fit a polynomial to the function
             self.ppf_spline = Akima1DInterpolator(y, x)
 
         # Evaluate the inverse of the polynomial at the given points
         return self.ppf_spline(q)
+
+
+imb = imb_gen(name='imb', shapes='n')
+
+def make_strictly_increasing(arr1, arr2):
+    epsilon = 1e-10
+    for i in range(1, len(arr1)):
+        if arr1[i] <= arr1[i-1]:
+            increment = arr1[i-1] + epsilon - arr1[i]
+            arr1[i] += increment
+            arr2[i] += increment
+    return arr1, arr2
 
 def get_qq(data: np.ndarray,
            loc: float,
@@ -353,12 +365,12 @@ def get_qq(data: np.ndarray,
     # evaluate the p_values of the theoretical quantiles
     if mode == 'normal':
         dist = norm(loc=loc, scale=scale)
-        p_theo_native = dist.cdf(q_theo_native)
     elif mode == 'imb':
-        dist = imb()
-        p_theo_native = dist.cdf(q_theo_native, loc=loc, scale=scale, n=nconv)
+        dist = imb(loc=loc, scale=scale, n=nconv)
     else:
         raise ValueError('Mode not recognized')
+
+    p_theo_native = dist.cdf(q_theo_native)
 
     # snap the theoretical p_values to values that actually appear in the
     # sample. This is done to avoid discretization errors in the sample
@@ -377,12 +389,7 @@ def get_qq(data: np.ndarray,
     q_sample = data_sorted[p_sample]
 
     # get the theoretical q-values by evaluating the ppf of the distribution
-    if mode == 'normal':
-        q_theo = dist.ppf(p_theo)
-    elif mode == 'imb':
-        q_theo = dist.ppf(p_theo, loc=loc, scale=scale, n=nconv)
-    else:
-        raise ValueError('Mode not recognized')
+    q_theo = dist.ppf(p_theo)
 
     # in some cases the ppf fails to evaluate. It then returns 0, for which
     # it is replaced by the non-gridded theoretical quantiles.
@@ -483,7 +490,8 @@ def test_dist(data: np.ndarray,
         if mode == 'normal':
             pdf_guess = norm.pdf(x=q_theo, loc=loc, scale=scale)
         elif mode == 'imb':
-            pdf_guess = imb().pdf(x=q_theo, loc=loc, scale=scale, n=nconv)
+            dist = imb(loc=loc, scale=scale, n=nconv)
+            pdf_guess = dist.pdf(x=q_theo)
         else:
             raise ValueError('Mode not recognized')
 
@@ -551,10 +559,8 @@ def test_dist(data: np.ndarray,
                                              loc=loc,
                                              scale=scale * slope)
                 elif mode == 'imb':
-                    pdf_fit = imb().pdf(x=q_theo,
-                                           loc=loc,
-                                           scale=scale * slope,
-                                           n=nconv)
+                    dist = imb(loc=loc, scale=scale * slope, n=nconv)
+                    pdf_fit = dist.pdf(x=q_theo)
                 else:
                     raise ValueError('Mode not recognized')
                 ax[0].plot(q_theo, pdf_fit,
