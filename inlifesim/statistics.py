@@ -2,7 +2,8 @@ from typing import Union
 
 import numpy as np
 from scipy.special import kv, gamma
-import scipy.stats as stats
+from scipy.stats import rv_continuous, norm, linregress
+from scipy.interpolate import UnivariateSpline, Akima1DInterpolator
 import matplotlib.pyplot as plt
 
 from inlifesim.util import freq2temp_fft, dict_sumover
@@ -268,12 +269,31 @@ def draw_fourier_noise(psd: np.ndarray,
 
     return x, x_ft
 
-class imb(stats.rv_continuous):
-    def _pdf(self, x, n):
-        pdf = ((2 ** (0.5 * (1 - n)) * np.abs(x) ** (0.5 * (n-1)) * kv(0.5 * (n - 1), np.abs(x)))
-               / (np.sqrt(np.pi) * gamma(n / 2)))
+
+class imb(rv_continuous):
+    def __init__(self, n, loc=0, scale=0, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.n = n
+        self.loc = loc
+        self.scale = scale
+        self.ppf_spline = None
+
+    def _pdf(self, x):
+        pdf = ((2 ** (0.5 * (1 - self.n)) * np.abs(x) ** (0.5 * (self.n-1)) * kv(0.5 * (self.n - 1), np.abs(x)))
+               / (np.sqrt(np.pi) * gamma(self.n / 2)))
         return pdf
 
+    def _ppf(self, q):
+        if self.ppf_spline is None:
+            # Generate some points
+            x = np.linspace(-30, 30, 1000)
+            y = self._cdf(x)
+
+            # Fit a polynomial to the function
+            self.ppf_spline = Akima1DInterpolator(y, x)
+
+        # Evaluate the inverse of the polynomial at the given points
+        return self.ppf_spline(q)
 
 def get_qq(data: np.ndarray,
            loc: float,
@@ -332,7 +352,7 @@ def get_qq(data: np.ndarray,
 
     # evaluate the p_values of the theoretical quantiles
     if mode == 'normal':
-        dist = stats.norm(loc=loc, scale=scale)
+        dist = norm(loc=loc, scale=scale)
         p_theo_native = dist.cdf(q_theo_native)
     elif mode == 'imb':
         dist = imb()
@@ -461,7 +481,7 @@ def test_dist(data: np.ndarray,
                           label='Data')
 
         if mode == 'normal':
-            pdf_guess = stats.norm.pdf(x=q_theo, loc=loc, scale=scale)
+            pdf_guess = norm.pdf(x=q_theo, loc=loc, scale=scale)
         elif mode == 'imb':
             pdf_guess = imb().pdf(x=q_theo, loc=loc, scale=scale, n=nconv)
         else:
@@ -487,7 +507,7 @@ def test_dist(data: np.ndarray,
                                         n_eval=n_eval_qq)
 
         if fit:
-            slope, _, _, _, _ = stats.linregress(x=q['theo'], y=q['sample'])
+            slope, _, _, _, _ = linregress(x=q['theo'], y=q['sample'])
 
         if plot:
             if fit:
@@ -527,7 +547,7 @@ def test_dist(data: np.ndarray,
 
             if fit:
                 if mode == 'normal':
-                    pdf_fit = stats.norm.pdf(x=q_theo,
+                    pdf_fit = norm.pdf(x=q_theo,
                                              loc=loc,
                                              scale=scale * slope)
                 elif mode == 'imb':
