@@ -266,6 +266,8 @@ def sys_noise_chop(mp_arg) -> dict:
         wavelength bin
     """
 
+    # TODO: Insert references to the equations once the publication is written
+
     flux_star = mp_arg['flux_star']
     A = mp_arg['A']
     wl = mp_arg['wl']
@@ -334,27 +336,19 @@ def sys_noise_chop(mp_arg) -> dict:
     noise_chop['pn_pa'] = np.sqrt(dn_pol * t_int)
 
     # calculate fourier components
-    # we can get significant speedup by copying data here
+    # TODO: This still assumes the same PSD for the different input apertures
 
-    # d_phi_j_hat_2_chop = np.array([
-    #     np.abs(np.convolve(
-    #         np.sqrt(d_phi_psd/t_rot/np.pi),
-    #         planet_template_c_fft,
-    #         mode='full'
-    #     )**2).sum() / t_rot**4 for j in range(num_a)
-    # ])
-    #
-    # d_a_j_hat_2_chop = np.array([
-    #     (np.convolve(
-    #         np.sqrt(d_a_b_2[j]),
-    #         np.abs(planet_template_c_fft)**2,
-    #         mode='full'
-    #     )**2).sum() / t_rot**4 for j in range(num_a)
-    # ])
+    d_phi_j_hat_2_chop = np.full(
+        shape=num_a,
+        fill_value=(np.sum(d_phi_psd * np.abs(planet_template_c_fft) ** 2)
+                    / t_rot ** 5 * len(planet_template_chop) ** 2)
+    )
 
-    d_phi_j_hat_2_chop = np.full(num_a, np.sum(d_phi_psd * np.abs(planet_template_c_fft) ** 2) / t_rot ** 5 * len(planet_template_chop) ** 2)
-
-    d_a_j_hat_2_chop = np.full(num_a, np.sum(d_a_psd * np.abs(planet_template_c_fft) ** 2) / t_rot ** 5 * len(planet_template_chop) ** 2)
+    d_a_j_hat_2_chop = np.full(
+        shape=num_a,
+        fill_value=(np.sum(d_a_psd * np.abs(planet_template_c_fft) ** 2)
+                    / t_rot ** 5 * len(planet_template_chop) ** 2)
+    )
 
     # first order phase noise
     noise_chop['sn_fo_phi'] = np.sum(grad_n_coeff['phi'] ** 2
@@ -362,72 +356,33 @@ def sys_noise_chop(mp_arg) -> dict:
 
 
     # poisson noise from null floor perturbation
-    dn_null_floor = np.array([(hess_n_coeff['aa'][j, j] * d_a_j_hat_2_chop[j]
-                               + hess_n_coeff['phiphi'][j, j] * d_phi_j_hat_2_chop[j])
-                              for j in range(num_a)]).sum()
+    dn_null_floor = np.sum(
+        np.array([(hess_n_coeff['aa'][j, j] * d_a_j_hat_2_chop[j]
+                   + hess_n_coeff['phiphi'][j, j] * d_phi_j_hat_2_chop[j])
+                  for j in range(num_a)])
+    )
     noise_chop['pn_snfl'] = dn_null_floor * t_rot
 
-    d_a_d_phi_j_hat_2_chop = np.full(shape=(num_a, num_a), fill_value=np.sum(np.convolve(d_a_psd[0], d_phi_psd, mode='same') * np.abs(planet_template_c_fft)**2) * len(planet_template_chop) ** 4 / t_rot ** 8)
-
-    noise_chop['sn_so_aphi'] = np.sum(hess_n_coeff['aphi'] ** 2 * d_a_d_phi_j_hat_2_chop * t_rot ** 2)
-
-    a=1
     # second order dadphi
-    # d_a_d_phi_j_hat_2_chop = np.convolve(np.convolve(d_a_b_2[0],
-    #                                                  d_phi_b_2,
-    #                                                  mode='full'),
-    #                                      np.abs(planet_template_c_fft)**2,
-    #                                      mode='full').sum() / t_rot**6
-    # d_a_d_phi_j_hat_2_chop = np.ones((num_a, num_a)) * d_a_d_phi_j_hat_2_chop
-    #
-    # noise_chop['sn_so_aphi'] = np.sum(hess_n_coeff['aphi'] ** 2 * d_a_d_phi_j_hat_2_chop * t_rot ** 2)
+    d_a_d_phi_j_hat_2_chop = np.full(
+        shape=(num_a, num_a),
+        fill_value=np.sum(
+            np.convolve(d_a_psd[0], d_phi_psd, mode='same')
+            * np.abs(planet_template_c_fft)**2
+        ) * len(planet_template_chop) ** 4 / t_rot ** 8
+    )
 
-    debug_sys_noise_chop(d_phi_b_2=d_phi_b_2,
-                         planet_template_c_fft=planet_template_c_fft,
-                         d_phi_j_hat_2_chop=d_phi_j_hat_2_chop)
-
-    '''
-    # second order dadphi
-    nt = len(planet_template_c_fft)
-    d_phi_b_2_f = np.concatenate((np.flip(d_phi_b_2[:nt]), d_phi_b_2[1:], np.zeros(1)))
-
-    # Eq (45)
-    # TODO: decide on implementation
-    j = 0
-    aa = [np.sum(d_a_b_2[j, 1:nt - r] * d_phi_b_2[1 + r:nt]) for r in range(1, nt)]
-    bb = [d_a_b_2[j, 0] * d_phi_b_2[r] for r in range(1, nt)]
-    d_a_j_phi_k_hat_2_chop = np.array(
-        [0.5 * (np.sum(
-            np.abs(planet_template_c_fft[1:]) ** 2 * (
-                    np.convolve(np.flip(d_phi_b_2_f[1:-2]), d_a_b_2[j, 1:], mode='valid')
-                    + np.array(aa)
-                    + np.array(bb)
-            )
-        )
-                + (np.sum(d_a_b_2[j, 1:] * d_phi_b_2[1:]) + d_a_b_2[j, 0] * d_phi_b_2[
-                    0] / 2) * np.abs(planet_template_c_fft[0]) ** 2)
-         for j in range(1)]
-    )[0]
-
-    d_a_j_phi_k_hat_2_chop_alt = equation45(epsilon=np.abs(planet_template_c_fft),
-                                            beta=d_a_b_2[0, :],
-                                            gamma=d_phi_b_2)
-
-    d_a_phi_hat_2_chop = np.ones((num_a, num_a)) * d_a_j_phi_k_hat_2_chop_alt
-    # d_a_j_phi_k_hat_2_chop = np.array([0.5 * (np.sum(np.abs(planet_template_c_fft[1:]) ** 2 * (
-    #         np.convolve(np.flip(d_phi_b_2_f[1:-2]), d_a_b_2[j, 1:], mode='valid')
-    #         + np.array([np.sum(d_a_b_2[j, 1:nt - r] * d_phi_b_2[1 + r:nt]) for r in range(1, nt)])
-    #         + np.array([d_a_b_2[j, 0] * d_phi_b_2[r] for r in range(1, nt)])))
-    #                                           + (np.sum(d_a_b_2[j, 1:] * d_phi_b_2[1:]) + d_a_b_2[j, 0] * d_phi_b_2[
-    #             0] / 2) * np.abs(planet_template_c_fft[0]) ** 2) for j in range(1)])[0]
-    # d_a_phi_hat_2_chop = np.ones((num_a, num_a)) * d_a_j_phi_k_hat_2_chop
-
-    noise_chop['sn_so_aphi'] = np.sqrt(np.sum(c_aphi ** 2 * d_a_phi_hat_2_chop) * t_int ** 2)
+    noise_chop['sn_so_aphi'] = np.sum(hess_n_coeff['aphi'] ** 2
+                                      * d_a_d_phi_j_hat_2_chop * t_rot ** 2)
 
     noise_chop['sn_fo'] = noise_chop['sn_fo_phi']
     noise_chop['sn_so'] = noise_chop['sn_so_aphi']
 
-    noise_chop['sn'] = np.sqrt(noise_chop['sn_fo_phi'] ** 2 + noise_chop['sn_so_aphi'] ** 2)
-    '''
+    noise_chop['sn'] = np.sqrt(noise_chop['sn_fo_phi'] ** 2
+                               + noise_chop['sn_so_aphi'] ** 2)
+
+    debug_sys_noise_chop(d_phi_b_2=d_phi_b_2,
+                         planet_template_c_fft=planet_template_c_fft,
+                         d_phi_j_hat_2_chop=d_phi_j_hat_2_chop)
 
     return noise_chop
