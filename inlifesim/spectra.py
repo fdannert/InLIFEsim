@@ -107,14 +107,16 @@ def create_pink_psd(t_rot: float,
     '''
 
     psd = (2 * rms ** 2 * t_rot ** 3 / (2 * n_sampling_max) ** 2
-           / harmonic_number_n_cutoff / np.arange(0, n_sampling_max + 1))
-    psd[0] = 0
+           / harmonic_number_n_cutoff / np.arange(1, n_sampling_max + 1))
+    psd = np.insert(arr=psd, obj=0, values=0)
     psd = np.concatenate((np.flip(psd[1:]), psd))
 
     if num_a != 1:
         psd = np.tile(psd, (num_a, 1))
 
     b_2 = (2 * n_sampling_max) ** 2 / t_rot * psd
+
+    # b_2 = psd / 2 / t_rot
 
     avg_2 = np.sum(b_2, axis=-1) / t_rot ** 4
 

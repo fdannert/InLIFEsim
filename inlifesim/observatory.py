@@ -588,6 +588,12 @@ class Instrument(object):
                     if np.round(r['wl'], 10) == np.round(wl, 10):
                         res.append(r)
 
+        # update the results to the photon rate table
+        res = pd.DataFrame.from_dict(res)
+        res['wl'] = np.round(res['wl'] * 1e6, 2).astype(str)
+        res.set_index(keys='wl', inplace=True)
+        self.photon_rates_chop.update(res)
+
         '''
         self.save_to_results(data=res,
                              chop='chop')
@@ -707,8 +713,10 @@ class Instrument(object):
 
         if self.n_cpu == 1:
             params['n_draws'] = self.n_draws
-            self.time_samples = draw_sample(params=params,
-                                            return_variables=self.time_samples_return_values)
+            self.time_samples = draw_sample(
+                params=params,
+                return_variables=self.time_samples_return_values
+            )
         else:
             if self.verbose:
                 print('')
@@ -733,7 +741,8 @@ class Instrument(object):
                 print('Combining results ...', end=' ')
 
             # combine the results dicts into single dict
-            # create empty dict with the same keys as the first result and properly sized arrays
+            # create empty dict with the same keys as the first result and
+            # properly sized arrays
             self.time_samples = {}
             time_samples_head = {}
             for k in results[0].keys():
@@ -749,7 +758,10 @@ class Instrument(object):
                     axis = np.argwhere(size == self.n_draws_per_run)
 
                     put = [slice(None) for _ in range(len(size))]
-                    put[axis[0][0]] = slice(time_samples_head[k], time_samples_head[k] + self.n_draws_per_run)
+                    put[axis[0][0]] = slice(
+                        time_samples_head[k],
+                        time_samples_head[k] + self.n_draws_per_run
+                    )
                     put = tuple(put)
 
                     self.time_samples[k][put] = r[k]
@@ -757,6 +769,10 @@ class Instrument(object):
 
             if self.verbose:
                 print('[Done]')
+
+    def cleanup(self):
+        self.photon_rates_chop = self.photon_rates_chop.astype(float)
+        self.photon_rates_nchop = self.photon_rates_nchop.astype(float)
 
     def run(self) -> None:
         self.instrumental_parameters()
@@ -895,7 +911,13 @@ class Instrument(object):
             if self.verbose:
                 print('[Done]')
 
+        if self.verbose:
+            print('Calculating systematics noise (chopping) ...', end=' ')
         self.sn_chop()
+        if self.verbose:
+            print('[Done]')
+
+        self.cleanup()
 
 
         a=1
