@@ -562,6 +562,8 @@ class Instrument(object):
                 'planet_template_chop': self.planet_template_chop[i, :],
                 'grad_n_coeff': self.grad_n_coeff[i],
                 'hess_n_coeff': self.hess_n_coeff[i],
+                'grad_n_coeff_chop': self.grad_n_coeff_chop[i],
+                'hess_n_coeff_chop': self.hess_n_coeff_chop[i],
                 'rms_mode': self.rms_mode,
                 'n_sampling_max': self.n_sampling_max,
                 'harmonic_number_n_cutoff':
@@ -585,7 +587,9 @@ class Instrument(object):
             res = []
             for wl in self.wl_bins:
                 for r in results:
-                    if np.round(r['wl'], 10) == np.round(wl, 10):
+                    if np.round(a=r['wl'],
+                                decimals=10) == np.round(a=wl,
+                                                         decimals=10):
                         res.append(r)
 
         # update the results to the photon rate table
@@ -594,68 +598,37 @@ class Instrument(object):
         res.set_index(keys='wl', inplace=True)
         self.photon_rates_chop.update(res)
 
+    def combine_instrumental(self):
+        self.photon_rates_chop['pn'] = np.sqrt(
+            (self.photon_rates_chop['pn_sgl'] ** 2
+            # the sqaure is missing on purpose, see perturbation.py
+             + self.photon_rates_chop['pn_snfl']
+             + self.photon_rates_chop['pn_lz'] ** 2
+             + self.photon_rates_chop['pn_ez'] ** 2
+             + self.photon_rates_chop['pn_pa'] ** 2).astype(float)
+        )
+
+        self.photon_rates_chop['instrumental'] = np.sqrt(
+            (self.photon_rates_chop['sn'] ** 2
+             + self.photon_rates_chop['pn_pa'] ** 2
+             + self.photon_rates_chop['pn_snfl'] ** 2).astype(float)
+        )
+
+        self.photon_rates_chop['noise'] = np.sqrt(
+            (self.photon_rates_chop['pn'] ** 2
+             + self.photon_rates_chop['sn']).astype(float)
+        )
+
+        self.photon_rates_chop['snr'] = (self.photon_rates_chop['signal']
+                                         / self.photon_rates_chop['noise'])
+
         '''
-        self.save_to_results(data=res,
-                             chop='chop')
-
-        self.photon_rates_chop['pn_sgl'] = self.photon_rates_nchop['pn_sgl']
-        self.photon_rates_chop['pn_ez'] = self.photon_rates_nchop['pn_ez']
-        self.photon_rates_chop['pn_lz'] = self.photon_rates_nchop['pn_lz']
-        self.photon_rates_chop['pn_dc'] = self.photon_rates_nchop['pn_dc']
-        self.photon_rates_chop['pn_tbd'] = self.photon_rates_nchop['pn_tbd']
-        self.photon_rates_chop['pn_tbpm'] = self.photon_rates_nchop['pn_tbpm']
-        self.photon_rates_chop['pn_ag_ht'] = self.photon_rates_nchop['pn_ag_ht']
-        self.photon_rates_chop['pn_ag_cld'] = self.photon_rates_nchop['pn_ag_cld']
-        self.photon_rates_chop['pn_ag_wht'] = self.photon_rates_nchop['pn_ag_wht']
-
-        self.photon_rates_chop['pn'] = np.sqrt((self.photon_rates_chop['pn_sgl'] ** 2
-                                                + self.photon_rates_chop['pn_ez'] ** 2
-                                                + self.photon_rates_chop['pn_lz'] ** 2
-                                                + self.photon_rates_chop['pn_pa'] ** 2
-                                                + self.photon_rates_chop['pn_snfl'] ** 2).astype(float))
-
-        self.photon_rates_chop['instrumental'] = np.sqrt((self.photon_rates_chop['sn'] ** 2
-                                                          + self.photon_rates_chop['pn_pa'] ** 2
-                                                          + self.photon_rates_chop['pn_snfl'] ** 2).astype(float))
-
-        if not self.agnostic_mode:
-            self.photon_rates_chop['pn'] = np.sqrt((self.photon_rates_chop['pn'] ** 2
-                                                    + self.photon_rates_chop['pn_dc'] ** 2
-                                                    + self.photon_rates_chop['pn_tbd'] ** 2
-                                                    + self.photon_rates_chop['pn_tbpm'] ** 2).astype(float))
-
-            self.photon_rates_chop['instrumental'] = np.sqrt((self.photon_rates_chop['instrumental'] ** 2
-                                                              + self.photon_rates_chop['pn_dc'] ** 2
-                                                              + self.photon_rates_chop['pn_tbd'] ** 2
-                                                              + self.photon_rates_chop['pn_tbpm'] ** 2).astype(float))
-
-        else:
-            self.photon_rates_chop['pn'] = np.sqrt((self.photon_rates_chop['pn'] ** 2
-                                                    + self.photon_rates_chop['pn_ag_ht'] ** 2
-                                                    + self.photon_rates_chop['pn_ag_cld'] ** 2
-                                                    + self.photon_rates_chop['pn_ag_wht'] ** 2).astype(float))
-
-            self.photon_rates_chop['instrumental'] = np.sqrt((self.photon_rates_chop['instrumental'] ** 2
-                                                              + self.photon_rates_chop['pn_ag_ht'] ** 2
-                                                              + self.photon_rates_chop['pn_ag_cld'] ** 2
-                                                              + self.photon_rates_chop['pn_ag_wht'] ** 2).astype(float))
-
-        self.photon_rates_chop['noise'] = np.sqrt((self.photon_rates_chop['pn'] ** 2
-                                                   + self.photon_rates_chop['sn'] ** 2).astype(float))
-
-        self.photon_rates_chop['fundamental'] = np.sqrt((self.photon_rates_chop['pn_sgl'] ** 2
-                                                         + self.photon_rates_chop['pn_ez'] ** 2
-                                                         + self.photon_rates_chop['pn_lz'] ** 2).astype(float))
-
-        # because of the incoherent combination of the final outputs, see Mugnier 2006
+        # because of the incoherent combination of the final outputs, see 
+        # Mugnier 2006
         if self.simultaneous_chopping:
             self.photon_rates_chop['noise'] *= np.sqrt(2)
             self.photon_rates_chop['fundamental'] *= np.sqrt(2)
-            self.photon_rates_chop['instrumental'] *= np.sqrt(2)
-
-        self.photon_rates_chop['snr'] = (self.photon_rates_chop['signal']
-                                                / self.photon_rates_chop['noise'])
-                                                
+            self.photon_rates_chop['instrumental'] *= np.sqrt(2)                                    
         '''
 
 
@@ -666,7 +639,7 @@ class Instrument(object):
         '''
 
         if len(self.wl_bins) != 1:
-            raise ValueError('Time series sampling is currently only supported '
+            raise ValueError('Time series sampling is currently only supported'
                              'in single wavelength channels')
 
         d_a_rms, d_phi_rms, _, _, _ = rms_frequency_adjust(
@@ -914,6 +887,7 @@ class Instrument(object):
         if self.verbose:
             print('Calculating systematics noise (chopping) ...', end=' ')
         self.sn_chop()
+        self.combine_instrumental()
         if self.verbose:
             print('[Done]')
 

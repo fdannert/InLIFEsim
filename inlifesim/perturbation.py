@@ -275,6 +275,8 @@ def sys_noise_chop(mp_arg) -> dict:
     planet_template_chop = mp_arg['planet_template_chop']
     grad_n_coeff = mp_arg['grad_n_coeff']
     hess_n_coeff = mp_arg['hess_n_coeff']
+    grad_n_coeff_chop = mp_arg['grad_n_coeff_chop']
+    hess_n_coeff_chop = mp_arg['hess_n_coeff_chop']
     #c_phi = mp_arg['c_phi']
     #c_aphi = mp_arg['c_aphi']
     #c_aa = mp_arg['c_aa']
@@ -351,14 +353,19 @@ def sys_noise_chop(mp_arg) -> dict:
     )
 
     # first order phase noise
-    noise_chop['sn_fo_phi'] = np.sum(grad_n_coeff['phi'] ** 2
+    noise_chop['sn_fo_phi'] = np.sum((grad_n_coeff['phi']
+                                      - grad_n_coeff_chop['phi']) ** 2
                                      * d_phi_j_hat_2_chop * t_rot ** 2)
 
 
     # poisson noise from null floor perturbation
     dn_null_floor = np.sum(
-        np.array([(hess_n_coeff['aa'][j, j] * d_a_j_hat_2_chop[j]
-                   + hess_n_coeff['phiphi'][j, j] * d_phi_j_hat_2_chop[j])
+        np.array([((hess_n_coeff['aa'][j, j]
+                    - hess_n_coeff_chop['aa'][j, j])
+                   * d_a_j_hat_2_chop[j]
+                   + (hess_n_coeff['phiphi'][j, j]
+                      - hess_n_coeff_chop['phiphi'][j, j])
+                   * d_phi_j_hat_2_chop[j])
                   for j in range(num_a)])
     )
     noise_chop['pn_snfl'] = dn_null_floor * t_rot
@@ -372,7 +379,8 @@ def sys_noise_chop(mp_arg) -> dict:
         ) * len(planet_template_chop) ** 4 / t_rot ** 8
     )
 
-    noise_chop['sn_so_aphi'] = np.sum(hess_n_coeff['aphi'] ** 2
+    noise_chop['sn_so_aphi'] = np.sum((hess_n_coeff['aphi']
+                                       - hess_n_coeff_chop['aphi']) ** 2
                                       * d_a_d_phi_j_hat_2_chop * t_rot ** 2)
 
     noise_chop['sn_fo'] = noise_chop['sn_fo_phi']

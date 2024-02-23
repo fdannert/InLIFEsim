@@ -222,8 +222,6 @@ def draw_fourier_noise(psd: np.ndarray,
                                  int((psd.shape[-1] - 1) / 2)::]
                                  / 2 / t_rot
                              )
-
-        # params['n_sampling_rot'] * np.sqrt(d_phi_psd[:, np.newaxis, int((d_phi_psd.shape[-1]-1)/2)::] / 2 /params['t_rot'])
     else:
         size = (n_outputs, n_draws, int((psd.shape[-1] + 1) / 2))
         scale = n_sampling_rot * np.sqrt(
@@ -239,23 +237,6 @@ def draw_fourier_noise(psd: np.ndarray,
                                     scale=scale,
                                     size=size)
             )
-
-    # d_phi_ft = (np.random.normal(loc=0,
-    #                              scale=params['n_sampling_rot'] * np.sqrt(
-    #                                  d_phi_psd[:, np.newaxis, int((d_phi_psd.shape[-1] - 1) / 2)::] / 2 / params[
-    #                                      't_rot']),
-    #                              size=(4, ndraws, int((d_phi_psd.shape[-1] + 1) / 2)))
-    #             + 1j * np.random.normal(loc=0,
-    #                                     scale=params['n_sampling_rot'] * np.sqrt(
-    #                                         d_phi_psd[:, np.newaxis, int((d_phi_psd.shape[-1] - 1) / 2)::] / 2 / params[
-    #                                             't_rot']),
-    #                                     size=(4, ndraws, int((d_phi_psd.shape[-1] + 1) / 2)))
-    #             )
-    #
-    # d_phi_ft = np.concatenate((np.flip(d_phi_ft[:, :, 1:], axis=-1), d_phi_ft), axis=-1)
-    #
-    # d_phi_time = freq2temp_fft(fourier_series=d_phi_ft,
-    #                            total_time=params['t_rot'])
 
     if n_outputs == 1:
         x_ft = np.concatenate((np.flip(x_ft[:, 1:], axis=-1), x_ft),
