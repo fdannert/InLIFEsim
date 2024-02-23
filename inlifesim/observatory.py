@@ -216,7 +216,8 @@ class Instrument(object):
 
         if self.n_sampling_rot % 2 == 0:
             self.n_sampling_rot += 1
-            print('Sampling rate was adjusted to be odd')
+            if self.verbose:
+                print('Sampling rate was adjusted to be odd')
 
         self.n_cpu = n_cpu
         self.n_sampling_max = n_sampling_max
