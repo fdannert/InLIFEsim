@@ -1,1 +1,1 @@
-from inlifesim.instrument import Instrument
+from inlifesim.observatory import Instrument

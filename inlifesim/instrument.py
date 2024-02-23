@@ -180,60 +180,6 @@ class Instrument(object):
         self.theta_x = None
         self.theta_y = None
 
-        # noise terms without chopping
-        # self.pn_sgl_nchop = None
-        # self.pn_ez_nchop = None
-        # self.pn_lz_nchop = None
-        #
-        # self.pn_dc_nchop = None
-        # self.pn_tbd_nchop = None
-        #
-        # self.pn_pa_nchop = None
-        # self.pn_snfl_nchop = None
-        # self.sn_fo_a_nchop = None
-        # self.sn_fo_phi_nchop = None
-        # self.sn_fo_x_nchop = None
-        # self.sn_fo_y_nchop = None
-        # self.sn_fo_nchop = None
-        # self.sn_so_aa_nchop = None
-        # self.sn_so_phiphi_nchop = None
-        # self.sn_so_aphi_nchop = None
-        # self.sn_so_polpol_nchop = None
-        # self.sn_so_nchop = None
-        # self.sn_nchop = None
-
-        # self.photon_rates = pd.DataFrame(columns=['nchop', 'chop'],
-        #                                  index=['signal',  # planet signal
-        #                                         'noise',  # overall noise contribution
-        #                                         'wl',  # wavelength bin
-        #                                         'pn_sgl',  # stellar geometric leakage
-        #                                         'pn_ez',  # exozodi leakage
-        #                                         'pn_lz',  # localzodi leakage
-        #                                         'pn_dc',  # dark current
-        #                                         'pn_tbd',  # thermal background detector
-        #                                         'pn_tbpm',  # thermal background primary mirror
-        #                                         'pn_pa',  # polarization angle
-        #                                         'pn_snfl',  # stellar null floor leakage
-        #                                         'pn_ag_cld',  # agnostic cold instrumental photon noise
-        #                                         'pn_ag_ht',  # agnostic hot instrumental photon noise
-        #                                         'pn_ag_wht',  # agnostic white instrumental photon noise
-        #                                         'pn',  # photon noise
-        #                                         'sn_fo_a',  # first order amplitude
-        #                                         'sn_fo_phi',  # first order phase
-        #                                         'sn_fo_x',  # first order x position
-        #                                         'sn_fo_y',  # first order y position
-        #                                         'sn_fo',  # systematic noise first order
-        #                                         'sn_so_aa',  # second order amplitude-amplitude term
-        #                                         'sn_so_phiphi',  # second order phase-phase term
-        #                                         'sn_so_aphi',  # amplitude phase cross term
-        #                                         'sn_so_polpol',  # second order polarization-polarization term
-        #                                         'sn_so',  # systematic noise second order
-        #                                         'sn',  # systematic noise
-        #                                         'fundamental',  # fundamental noise (astrophysical)
-        #                                         'instrumental',  # instrumental noise
-        #                                         'snr'  # signal to noise ratio
-        #                                         ])
-
         self.photon_rates_chop = pd.DataFrame(columns=['signal',  # planet signal
                                                        'noise',  # overall noise contribution
                                                        'wl',  # wavelength bin
@@ -644,7 +590,7 @@ class Instrument(object):
              for l in range(len(self.phi_rot))]), 0, 1)
 
         if self.simultaneous_chopping:
-            self.n_planet_nchop = self.n_planet + self.n_planet_r
+            self.n_planet_nchop = self.n_planet #+ self.n_planet_r
 
         # Fourier transform of planet signal equivalent to Eq (33)
         nf = rfft(self.n_planet_nchop)
@@ -1370,11 +1316,10 @@ def instrumental_noise_single_wav_chop(mp_arg) -> dict:
     d_pol_rms = mp_arg['d_pol_rms']
     pink_noise_co = mp_arg['pink_noise_co']
 
+    # calculate the Fourier components of the planet template
     planet_template_c_fft = rfft(planet_template_chop)
-    #planet_template_c_fft = planet_template_c_fft / len(planet_template_chop)
-
-    # mirror the planet template
     planet_template_c_fft = np.concatenate((np.flip(planet_template_c_fft[1:]), planet_template_c_fft))
+    planet_template_c_fft *= (t_rot / len(planet_template_c_fft))
 
     # create noise PSD
     d_a_rms, d_phi_rms, d_pol_rms, _, _ = rms_frequency_adjust(rms_mode=rms_mode,
@@ -1389,37 +1334,48 @@ def instrumental_noise_single_wav_chop(mp_arg) -> dict:
     d_phi_co = pink_noise_co
     d_pol_co = pink_noise_co
 
-    d_a_psd, d_a_freq, avg_d_a_2, d_a_b_2 = create_pink_psd(t_rot=t_rot,
-                                                            n_sampling_max=n_sampling_max,
-                                                            harmonic_number_n_sampling_max=harmonic_number_n_sampling_max,
+    # todo: remove harmonic number approximation from loop to increase speed
+    d_a_psd, avg_d_a_2, d_a_b_2 = create_pink_psd(t_rot=t_rot,
+                                                            n_sampling_max=len(planet_template_chop)/2,
+                                                            harmonic_number_n_cutoff=harmonic_number_approximation(d_a_co*t_rot),
                                                             rms=d_a_rms,
                                                             num_a=num_a)
 
-    d_phi_psd, d_phi_freq, avg_d_phi_2, d_phi_b_2 = create_pink_psd(t_rot=t_rot,
-                                                            n_sampling_max=n_sampling_max,
-                                                            harmonic_number_n_sampling_max=harmonic_number_n_sampling_max,
+    d_phi_psd, avg_d_phi_2, d_phi_b_2 = create_pink_psd(t_rot=t_rot,
+                                                            n_sampling_max=len(planet_template_chop)/2,
+                                                            harmonic_number_n_cutoff=harmonic_number_approximation(d_phi_co*t_rot),
                                                             rms=d_phi_rms,
                                                             num_a=1)
 
-    d_pol_psd, d_pol_freq, avg_d_pol_2, d_pol_b_2 = create_pink_psd(t_rot=t_rot,
-                                                            n_sampling_max=n_sampling_max,
-                                                            harmonic_number_n_sampling_max=harmonic_number_n_sampling_max,
+    d_pol_psd, avg_d_pol_2, d_pol_b_2 = create_pink_psd(t_rot=t_rot,
+                                                            n_sampling_max=len(planet_template_chop),
+                                                            harmonic_number_n_cutoff=harmonic_number_approximation(d_pol_co*t_rot),
                                                             rms=d_pol_rms,
                                                             num_a=1)
 
     # noise contribution
     noise_chop = {'wl': wl}
 
+    # polarization noise
     dn_pol = (flux_star * A ** 2 * avg_d_pol_2).sum()
     noise_chop['pn_pa'] = np.sqrt(dn_pol * t_int)
-    dn_null_floor = np.array([c_aa[j, j] * avg_d_a_2[j] + c_phiphi[j, j] * avg_d_phi_2 for j in range(num_a)]).sum()
-    noise_chop['pn_snfl'] = np.sqrt(dn_null_floor * t_int)
 
-    # first order dphi
-    d_phi_j_hat_2_chop = np.array([(np.abs(planet_template_c_fft) ** 2
-                                    * d_phi_b_2[int(np.floor(len(d_phi_b_2)/2))-int(np.floor(len(planet_template_c_fft)/2)):int(np.floor(len(d_phi_b_2)/2))+int(np.floor(len(planet_template_c_fft)/2))+1]).sum() for j in range(num_a)])
-    noise_chop['sn_fo_phi'] = np.sqrt((c_phi ** 2 * d_phi_j_hat_2_chop).sum() * t_int ** 2)
+    # calculate fourier components
+    # we can get significant speedup by copying data here
+    d_phi_j_hat_2_chop = np.array([
+        np.convolve(d_phi_b_2, np.abs(planet_template_c_fft)**2, mode='full').sum() / t_rot**4 for j in range(num_a)
+    ])
 
+    d_a_j_hat_2_chop = np.array([
+        np.convolve(d_a_b_2[j], np.abs(planet_template_c_fft)**2, mode='full').sum() / t_rot**4 for j in range(num_a)
+    ])
+
+    # first order phase noise
+    noise_chop['sn_fo_phi'] = np.sqrt((c_phi ** 2 * d_phi_j_hat_2_chop * t_rot ** 2).sum())
+
+    # poisson noise from null floor perturbation
+    dn_null_floor = np.array([(c_aa[j, j] * d_a_j_hat_2_chop[j] + c_phiphi[j, j] * d_phi_j_hat_2_chop[j]) * t_rot for j in range(num_a)]).sum()
+    noise_chop['pn_snfl'] = np.sqrt(dn_null_floor)
 
     # second order dadphi
     nt = len(planet_template_c_fft)
@@ -1491,7 +1447,7 @@ def equation45(epsilon, beta, gamma):
 
 def create_pink_psd(t_rot: float,
                     n_sampling_max: int,
-                    harmonic_number_n_sampling_max: int,
+                    harmonic_number_n_cutoff: int,
                     rms: float,
                     num_a: int):
     '''
@@ -1502,31 +1458,29 @@ def create_pink_psd(t_rot: float,
         Total rotation time of array, fixes the maximum frequency
     n_sampling_max
         Number of frequency samples
-    harmonic_number_n_sampling_max
-        Harmonic number (truncated harmonic series) of n_sampling_max
+    harmonic_number_n_cutoff
+        Harmonic number (truncated harmonic series) of n_cutoff
     rms
         RMS of the pink noise
+    num_a
+        Number of apertures
 
     Returns
     -------
 
     '''
-    # create frequency array
-    freq = np.arange(0, n_sampling_max + 1) * 1 / t_rot
-
-    # pink noise PSD, remove the DC component
-    psd = np.append([0], 1 / freq[1:]) * 4 * rms ** 2 * n_sampling_max ** 2 / harmonic_number_n_sampling_max
-
-    # mirror the frequency array and PSD array
-    freq = np.concatenate((-np.flip(freq[1:]), freq))
+    psd = rms ** 2 * t_rot / harmonic_number_n_cutoff / np.arange(0, n_sampling_max+1)
+    psd[0] = 0
     psd = np.concatenate((np.flip(psd[1:]), psd))
 
     if num_a != 1:
         psd = np.tile(psd, (num_a, 1))
 
-    b_2 = psd / (2 * t_rot)
-    avg_2 = np.sum(b_2, axis=-1) / b_2.shape[-1] ** 2  # by parseval theorem
-    return psd, freq, avg_2, b_2
+    b_2 = t_rot * psd
+
+    avg_2 = np.sum(b_2, axis=-1) / t_rot ** 4
+
+    return psd, avg_2, b_2
 
 def create_white_psd(cutoff_freq: float,
                      t_rot: float,
