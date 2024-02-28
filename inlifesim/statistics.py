@@ -611,7 +611,8 @@ def get_sigma_lookup(sigma_gauss,
                      N,
                      B_per,
                      n_sigma=1000,
-                     n_cpu=1):
+                     n_cpu=1,
+                     verbose=False):
 
     """
     Generates a lookup table for the sigma values of the combined Gaussian
@@ -643,6 +644,9 @@ def get_sigma_lookup(sigma_gauss,
     table.
     """
 
+    if verbose:
+        print('Drawing samples ...')
+
     if n_cpu == 1:
         T_X = get_samples_lookup(scale_gauss=sigma_gauss,
                                  scale_imb=sigma_imb,
@@ -667,9 +671,18 @@ def get_sigma_lookup(sigma_gauss,
 
         T_X = np.concatenate(results)
 
+    if verbose:
+        print('[Done]')
+        print('Sorting the test statistic ...', end=' ')
+
     # sort the T_X values and note at which overall percentage each T_X value
     # appears
     T_X_sort = np.sort(T_X)
+
+    if verbose:
+        print('[Done]')
+        print('Calculating the sigma values ...', end=' ')
+
     perc = np.linspace(start=1 / len(T_X_sort),
                        stop=1,
                        num=len(T_X_sort),
@@ -687,5 +700,7 @@ def get_sigma_lookup(sigma_gauss,
         sigma_get.append(
             T_X_sort[np.min(np.where(perc > t_dist(df=N - 1).cdf(sw)))]
         )
+
+    print('[Done]')
 
     return sigma_want, np.array(sigma_get)
