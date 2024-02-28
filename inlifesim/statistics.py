@@ -698,16 +698,25 @@ def get_sigma_lookup(sigma_gauss,
 
     p_want = t_dist(df=N - 1).cdf(sigma_want)
 
-    indices = []
-    i = 0
-    for value in tqdm(p_want, disable=np.invert(verbose)):
-        while i < len(perc) - 1 and perc[i + 1] < value:
-            i += 1
-        if (i < len(perc) - 1
-                and abs(perc[i + 1] - value) < abs(perc[i] - value)):
-            i += 1
-        indices.append(i)
-    sigma_get = T_X_sort[indices]
+    # Interpolate to find values in perc corresponding to p_want
+    perc_interp = np.interp(p_want, perc, np.arange(len(perc)))
+
+    # Convert interpolated indices to integers
+    perc_indices = np.round(perc_interp).astype(int)
+
+    # Get corresponding values of T_X
+    sigma_get = T_X_sort[perc_indices]
+
+    # indices = []
+    # i = 0
+    # for value in tqdm(p_want, disable=np.invert(verbose)):
+    #     while i < len(perc) - 1 and perc[i + 1] < value:
+    #         i += 1
+    #     if (i < len(perc) - 1
+    #             and abs(perc[i + 1] - value) < abs(perc[i] - value)):
+    #         i += 1
+    #     indices.append(i)
+    # sigma_get = T_X_sort[indices]
 
     # the actual sigma is the value at the test statistic where the p-value
     # is equal to the desired sigma in a T-distribution
