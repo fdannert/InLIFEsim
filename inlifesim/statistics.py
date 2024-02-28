@@ -610,8 +610,7 @@ def get_sigma_lookup(sigma_gauss,
                      B,
                      N,
                      B_per,
-                     hist_sig=5,
-                     max_sig_want=5,
+                     n_sigma=1000,
                      n_cpu=1):
 
     """
@@ -632,10 +631,8 @@ def get_sigma_lookup(sigma_gauss,
     N (int): The sample size for each set of Bootstrap-samples.
     B_per (int): The number of Bootstrap-samples to generate per job in
     multi-processing.
-    hist_sig (float): The number of standard deviations to consider for the
-    histogram range.
-    max_sig_want (float, optional): The maximum desired sigma value for the
-    lookup table. Defaults to 5.
+    n_sigma (int, optional): The number of sigma values to generate for the
+    lookup table. Defaults to 1000.
     n_cpu (int, optional): The number of CPUs to use for parallel
     processing. Defaults to 1.
 
@@ -670,26 +667,25 @@ def get_sigma_lookup(sigma_gauss,
 
         T_X = np.concatenate(results)
 
-    mean = np.mean(T_X)
-    std = np.std(T_X)
-    hist = np.histogram(
-        T_X,
-        bins=100,
-        range=(mean - std * hist_sig, mean + std * hist_sig)
-    )
+    # sort the T_X values and note at which overall percentage each T_X value
+    # appears
+    T_X_sort = np.sort(T_X)
+    perc = np.linspace(start=1 / len(T_X_sort),
+                       stop=1,
+                       num=len(T_X_sort),
+                       endpoint=True)
 
-    sigma_want = np.linspace(0, max_sig_want, 1000)
-
-    # Calculate the mid-points of the bins
-    bin_midpoints = hist[1][:-1] + np.diff(hist[1]) / 2
-
+    sigma_want = np.linspace(start=0,
+                             stop=t_dist(df=N - 1).ppf(1 - 1 / (B - 1)),
+                             num=n_sigma)
     sigma_get = []
 
-    for sw in sigma_want:
-        # Find the mid-points where the cumulative sum of the histogram is
-        # greater than the CDF at sw
-        sigma_get.append(np.min(bin_midpoints[(np.cumsum(hist[0]) / B)
-                                              > t_dist(df=N - 1).cdf(sw)]))
 
-    else:
-        return sigma_want, np.array(sigma_get)
+    # the actual sigma is the value at the test statistic where the p-value
+    # is equal to the desired sigma in a T-distribution
+    for sw in sigma_want:
+        sigma_get.append(
+            T_X_sort[np.min(np.where(perc > t_dist(df=N - 1).cdf(sw)))]
+        )
+
+    return sigma_want, np.array(sigma_get)
