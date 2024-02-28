@@ -697,9 +697,9 @@ def get_sigma_lookup(sigma_gauss,
 
     # the actual sigma is the value at the test statistic where the p-value
     # is equal to the desired sigma in a T-distribution
-    for sw in tqdm(sigma_want, disable=~verbose):
+    for sw in tqdm(sigma_want, disable=np.invert(verbose)):
         sigma_get.append(
-            T_X_sort[np.min(np.where(perc > t_dist(df=N - 1).cdf(sw)))]
+            T_X_sort[np.where(perc > t_dist(df=N - 1).cdf(sw))[0][0]]
         )
 
     print('[Done]')
