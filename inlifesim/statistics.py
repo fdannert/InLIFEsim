@@ -8,7 +8,7 @@ from scipy.interpolate import UnivariateSpline, Akima1DInterpolator
 import matplotlib.pyplot as plt
 from joblib import Parallel, delayed, parallel_config
 from joblib_progress import joblib_progress
-from tqdm import tqdm
+import time
 
 from inlifesim.util import freq2temp_fft, dict_sumover, remove_non_increasing
 
@@ -675,14 +675,16 @@ def get_sigma_lookup(sigma_gauss,
     if verbose:
         print('[Done]')
         print('Sorting the test statistic ...', end=' ', flush=True)
+        t = time.time()
 
     # sort the T_X values and note at which overall percentage each T_X value
     # appears
     T_X_sort = np.sort(T_X)
 
     if verbose:
-        print('[Done]')
-        print('Calculating the sigma values ...', flush=True)
+        print(f'[Done] ({(time.time() - t):.2f}s)')
+        print('Calculating the sigma values ...', end=' ', flush=True)
+        t = time.time()
 
     perc = np.linspace(start=1 / len(T_X_sort),
                        stop=1,
@@ -692,16 +694,20 @@ def get_sigma_lookup(sigma_gauss,
     sigma_want = np.linspace(start=0,
                              stop=t_dist(df=N - 1).ppf(1 - 1 / (B - 1)),
                              num=n_sigma)
-    sigma_get = []
 
+    p_want = t_dist(df=N - 1).cdf(sigma_want)
+    indices = np.abs(perc.reshape(-1, 1) - p_want).argmin(axis=0)
+    sigma_get = T_X_sort[indices]
 
     # the actual sigma is the value at the test statistic where the p-value
     # is equal to the desired sigma in a T-distribution
-    for sw in tqdm(sigma_want, disable=np.invert(verbose)):
-        sigma_get.append(
-            T_X_sort[np.where(perc > t_dist(df=N - 1).cdf(sw))[0][0]]
-        )
+    # sigma_get = []
+    # for sw in tqdm(sigma_want, disable=np.invert(verbose)):
+    #     sigma_get.append(
+    #         T_X_sort[np.where(perc > t_dist(df=N - 1).cdf(sw))[0][0]]
+    #     )
 
-    print('[Done]')
+    if verbose:
+        print(f'[Done] ({(time.time() - t):.2f}s)')
 
     return sigma_want, np.array(sigma_get)
