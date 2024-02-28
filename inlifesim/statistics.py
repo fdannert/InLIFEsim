@@ -9,6 +9,7 @@ import matplotlib.pyplot as plt
 from joblib import Parallel, delayed, parallel_config
 from joblib_progress import joblib_progress
 import time
+from tqdm import tqdm
 
 from inlifesim.util import freq2temp_fft, dict_sumover, remove_non_increasing
 
@@ -696,7 +697,16 @@ def get_sigma_lookup(sigma_gauss,
                              num=n_sigma)
 
     p_want = t_dist(df=N - 1).cdf(sigma_want)
-    indices = np.abs(perc.reshape(-1, 1) - p_want).argmin(axis=0)
+
+    indices = []
+    i = 0
+    for value in tqdm(p_want, disable=np.invert(verbose)):
+        while i < len(perc) - 1 and perc[i + 1] < value:
+            i += 1
+        if (i < len(perc) - 1
+                and abs(perc[i + 1] - value) < abs(perc[i] - value)):
+            i += 1
+        indices.append(i)
     sigma_get = T_X_sort[indices]
 
     # the actual sigma is the value at the test statistic where the p-value
