@@ -682,7 +682,7 @@ def get_sigma_lookup(sigma_gauss,
 
     if verbose:
         print('[Done]')
-        print('Calculating the sigma values ...', end=' ', flush=True)
+        print('Calculating the sigma values ...', flush=True)
 
     perc = np.linspace(start=1 / len(T_X_sort),
                        stop=1,
