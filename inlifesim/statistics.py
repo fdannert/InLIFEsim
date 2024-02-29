@@ -614,7 +614,8 @@ def get_sigma_lookup(sigma_gauss,
                      B_per,
                      n_sigma=1000,
                      n_cpu=1,
-                     verbose=False):
+                     verbose=False,
+                     parallel=False):
 
     """
     Generates a lookup table for the sigma values of the combined Gaussian
@@ -680,7 +681,11 @@ def get_sigma_lookup(sigma_gauss,
 
     # sort the T_X values and note at which overall percentage each T_X value
     # appears
-    T_X_sort = np.sort(T_X)
+    if parallel:
+        import parallel_sort
+        T_X_sort = parallel_sort.sort(T_X)
+    else:
+        T_X_sort = np.sort(T_X)
 
     if verbose:
         print(f'[Done] ({(time.time() - t):.2f}s)')
