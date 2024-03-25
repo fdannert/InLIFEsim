@@ -682,7 +682,7 @@ def get_sigma_lookup(sigma_gauss,
     # sort the T_X values and note at which overall percentage each T_X value
     # appears
     if parallel:
-        import parallel_sort
+        from parallel_sort import parallel_sort
         T_X_sort = parallel_sort.sort(T_X)
     else:
         T_X_sort = np.sort(T_X)
