@@ -683,7 +683,7 @@ def get_sigma_lookup(sigma_gauss,
     # appears
     if parallel:
         from parallel_sort import parallel_sort
-        T_X_sort = parallel_sort.sort(T_X)
+        T_X_sort = parallel_sort(T_X)
     else:
         T_X_sort = np.sort(T_X)
 
