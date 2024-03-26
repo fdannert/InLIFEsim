@@ -482,7 +482,6 @@ def test_dist(data: np.ndarray,
 
         if y_log:
             ax[0].set_yscale('log')
-        ax[0].legend(loc='lower center')
         ax[0].set_ylim(np.sort(np.unique(hist[0]))[1] * 0.5,
                        np.max(np.concatenate((hist[0], pdf_guess))) * 1.5)
 
@@ -550,7 +549,8 @@ def test_dist(data: np.ndarray,
 
             plt.tight_layout()
             plt.show()
-
+        if plot:
+            ax[0].legend(loc='lower center')
         if fit:
             return slope, r_2
         else:
