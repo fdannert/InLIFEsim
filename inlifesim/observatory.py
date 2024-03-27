@@ -1,6 +1,5 @@
 from typing import Union
 import multiprocessing as mp
-from collections import defaultdict
 
 import numpy as np
 import pandas as pd
@@ -16,8 +15,8 @@ from inlifesim.signal import planet_signal, fundamental_noise
 from inlifesim.spectra import rms_frequency_adjust, create_pink_psd
 from inlifesim.statistics import draw_sample
 
-class Instrument(object):
 
+class Instrument(object):
 
     def __init__(self,
                  wl_bins: np.ndarray,
@@ -40,26 +39,10 @@ class Instrument(object):
                  phase_response: np.ndarray,
                  phase_response_chop: np.ndarray,
                  t_rot: float,
-                 chopping: str,
-                 pix_per_wl,
-                 detector_dark_current: str,
-                 dark_current_pix: Union[float, type(None)],
-                 detector_thermal: str,
-                 det_temp: float,
-                 magnification: float,
-                 f_number: float,
-                 secondary_primary_ratio: float,
-                 primary_emissivity: float,
-                 primary_temp: float,
                  n_sampling_rot: int,
                  n_cpu: int,
                  rms_mode: str,
-                 agnostic_mode: bool = False,
-                 eps_cold: Union[float, type(None)] = None,
-                 eps_hot: Union[float, type(None)] = None,
-                 eps_white: Union[float, type(None)] = None,
-                 agnostic_spacecraft_temp: Union[float, type(None)] = None,
-                 n_sampling_max: int = 10000000,
+                 n_sampling_max: int = int(1e7),
                  d_a_rms: Union[float, type(None)] = None,
                  d_phi_rms: Union[float, type(None)] = None,
                  d_pol_rms: Union[float, type(None)] = None,
@@ -73,7 +56,6 @@ class Instrument(object):
                  n_draws: Union[int, type(None)] = None,
                  n_draws_per_run: Union[int, type(None)] = None,
                  time_series_return_values: Union[str, list] = 'all',
-                 wl_resolution: int = 200,
                  flux_planet: np.ndarray = None,
                  simultaneous_chopping: bool = False,
                  verbose: bool = False,
@@ -222,7 +204,6 @@ class Instrument(object):
         self.n_cpu = n_cpu
         self.n_sampling_max = n_sampling_max
 
-        self.chopping = chopping
         self.simultaneous_chopping = simultaneous_chopping
         self.t_int = integration_time
 
@@ -239,30 +220,7 @@ class Instrument(object):
         self.throughput = throughput
         self.flux_division = flux_division
 
-        self.R = None  # response function R
-        # baseline matrix in x-direction (i.e. x_jk in Lay2004)
-        self.bl_x = None
-        self.bl_y = None  # baseline matrix in y-direction
-
         self.t_rot = t_rot
-        self.pix_per_wl = pix_per_wl
-        self.detector_dark_current = detector_dark_current
-        self.dark_current_pix = dark_current_pix
-        self.detector_thermal = detector_thermal
-        self.det_temp = det_temp
-        self.wl_resolution = wl_resolution
-
-        self.magnification = magnification
-        self.f_number = f_number
-        self.secondary_primary_ratio = secondary_primary_ratio
-        self.primary_temp = primary_temp
-        self.primary_emmisivity = primary_emissivity
-
-        self.agnostic_mode = agnostic_mode
-        self.eps_cold = eps_cold
-        self.eps_hot = eps_hot
-        self.eps_white = eps_white
-        self.agnostic_spacecraft_temp = agnostic_spacecraft_temp
 
         self.rms_mode = rms_mode
         self.d_a_rms = d_a_rms
@@ -312,41 +270,45 @@ class Instrument(object):
 
         self.b_ez = None
 
-        # sensitivity coefficients
-        self.c_a_star = None
-        self.c_phi_star = None
-        self.c_x_star = None
-        self.c_y_star = None
-        self.c_aphi_star = None
-        self.c_aa_star = None
-        self.c_phiphi_star = None
-        self.c_thetatheta_star = None
-
-        self.c_a_ez = None
-        self.c_phi_ez = None
-        self.c_aphi_ez = None
-        self.c_aa_ez = None
-        self.c_phiphi_ez = None
-
-        self.c_a_lz = None
-
-        self.c_a = None
-        self.c_phi = None
-        self.c_x = None
-        self.c_y = None
-        self.c_aphi = None
-        self.c_aa = None
-        self.c_phiphi = None
-        self.c_thetatheta = None
-
         # planet signal
-        self.sig_planet_nchop = None
         self.planet_template_nchop = None
         self.planet_template_chop = None
-        self.n_planet = None
-        self.phi_rot = None
-        self.theta_x = None
-        self.theta_y = None
+
+        # instrumental parameters
+        self.A = None
+        self.num_a = None
+        self.bl = None
+        self.omega = None
+        self.hfov = None
+        self.rad_pix = None
+        self.au_pix = None
+        self.radius_map = None
+        self.r_au = None
+
+        # sensitivity coefficients
+        self.grad_star = None
+        self.hess_star = None
+
+        self.grad_star_chop = None
+        self.hess_star_chop = None
+
+        self.grad_ez = None
+        self.hess_ez = None
+
+        self.grad_ez_chop = None
+        self.hess_ez_chop = None
+
+        self.grad_lz = None
+
+        self.grad_n_coeff = None
+        self.hess_n_coeff = None
+        self.grad_n_coeff_chop = None
+        self.hess_n_coeff_chop = None
+
+        # statistics
+        self.d_a_psd = None
+        self.d_phi_psd = None
+        self.time_samples = None
 
         self.photon_rates_chop = pd.DataFrame(
             columns=['signal',  # planet signal
@@ -632,7 +594,6 @@ class Instrument(object):
             self.photon_rates_chop['instrumental'] *= np.sqrt(2)                                    
         '''
 
-
     def draw_time_series(self):
         '''
         Draw samples from noise distributions
@@ -893,38 +854,3 @@ class Instrument(object):
             print('[Done]')
 
         self.cleanup()
-
-
-        a=1
-        # self.create_planet()
-        # self.create_localzodi()
-        # self.create_exozodi()
-        #
-        # self.sensitivity_coefficients()
-        #
-        # self.planet_signal()
-        #
-        # self.fundamental_noise()
-        #
-        # if self.agnostic_mode:
-        #     self.pn_agnostic()
-        # else:
-        #     self.pn_dark_current()
-        #     self.pn_thermal_background_detector()
-        #     self.pn_thermal_primary_mirror()
-        #
-        # if (self.chopping == 'nchop') or (self.chopping == 'both'):
-        #     self.sn_nchop()
-        # if (self.chopping == 'chop') or (self.chopping == 'both'):
-        #     self.sn_chop()
-        # if self.chopping not in ['chop', 'nchop', 'both']:
-        #     raise ValueError('Invalid chopping selection')
-        #
-        # self.calculate_null_depth()
-
-        # self.cleanup()
-
-
-
-
-
