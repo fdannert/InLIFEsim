@@ -566,7 +566,7 @@ class EvaluateBootstrapping():
             pickle.dump(self.result, f)
 
 
-class InterpretBootstraping():
+class InterpretBootstrapping():
 
     def __init__(self,
                  lookup_table_path: str):
