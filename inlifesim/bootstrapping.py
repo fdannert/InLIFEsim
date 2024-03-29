@@ -84,7 +84,6 @@ class EvaluateBootstrapping():
         rat_bes_gaus = []
 
         for sg, si in zip(self.sigma_gauss, self.sigma_bessel):
-            # noinspection PyTypeChecker
             sig_analytical.append(np.interp(sig_actual,
                                             self.sigma_want_get[(sg, si)][0],
                                             self.sigma_want_get[(sg, si)][1]))
@@ -274,7 +273,6 @@ class EvaluateBootstrapping():
         colors = thermal(np.linspace(0, 0.85, len(sigma_ratios)))
 
         for sg, si in zip(self.sigma_gauss, self.sigma_bessel):
-            # noinspection PyTypeChecker
             ax.plot(self.sigma_want_get[(sg, si)][1],
                     self.sigma_want_get[(sg, si)][0],
                     color='gray')
@@ -378,12 +376,13 @@ class EvaluateBootstrapping():
         sigma_ratio = []
 
         for i in range(len(fit_values)):
-            sig_a = np.linspace(logistic(crit_region[i, 0], *fit_values[i]),
-                                logistic(crit_region[i, 1], *fit_values[i]),
+            sig_r = np.linspace(crit_region[i, 0],
+                                crit_region[i, 1],
                                 n_analytical)
-            sigma_analytical.append(sig_a)
+            sigma_ratio.append(sig_r)
 
-            sigma_ratio.append(inverse_logistic(sig_a, *fit_values[i]))
+            sigma_analytical.append(logistic(sig_r, *fit_values[i]))
+
         sigma_analytical = np.array(sigma_analytical)
         sigma_ratio = np.array(sigma_ratio)
 
@@ -396,8 +395,7 @@ class EvaluateBootstrapping():
             for i in range(len(sigma_actual)):
                 ax.scatter(sigma_analytical[i,],
                            10 ** sigma_ratio[i,],
-                           c=thermal((sigma_actual[i] - min_s)
-                                     / (max_s - min_s)),
+                           c=thermal((sigma_actual[i] - min_s) / (max_s - min_s)),
                            s=3)
 
             plt.xlabel(r'$\sigma_{\mathcal{N}, \mathrm{analytical}}$')
@@ -426,12 +424,14 @@ class EvaluateBootstrapping():
         self.lookup_ratio, X, Y = self.interpolate_to_grid(
             points=points_ratio,
             sigma_analytical_shape=sigma_analytical_shape,
-            sigma_ratio_shape=sigma_ratio_shape
+            sigma_ratio_shape=sigma_ratio_shape,
+            fill_nan=False
         )
         self.lookup, self.lookup_X, self.lookup_Y = self.interpolate_to_grid(
             points=points,
             sigma_analytical_shape=sigma_analytical_shape,
-            sigma_ratio_shape=sigma_ratio_shape
+            sigma_ratio_shape=sigma_ratio_shape,
+            fill_nan=False
         )
 
         if self.verbose:
@@ -440,7 +440,10 @@ class EvaluateBootstrapping():
             plt.imshow(self.lookup_ratio,
                        origin='lower',
                        cmap=thermal,
-                       extent=(0, 8, np.log10(6e-2), np.log10(5)),
+                       extent=(sigma_analytical_shape[0],
+                               sigma_analytical_shape[1],
+                               sigma_ratio_shape[0],
+                               sigma_ratio_shape[1]),
                        aspect='auto')
 
             plt.colorbar()
@@ -449,6 +452,7 @@ class EvaluateBootstrapping():
                         np.log10(Y),
                         self.lookup_ratio,
                         levels=[0.8, 0.85, 0.9, 0.95, 1, 1.05],
+                        # levels=[1, 2, 3, 4, 5, 6, 7, 8],
                         colors='w',
                         linewidths=1)
 
@@ -477,12 +481,12 @@ class EvaluateBootstrapping():
             ana_limits = np.array((sigma_ratios,
                                    np.min(sigma_analytical, axis=1)))
 
-            plt.plot(ana_limits[1,], np.log10(ana_limits[0,]), color='r')
+            # plt.plot(ana_limits[1, ], np.log10(ana_limits[0, ]), color='r')
 
             plt.xlabel(r'$\sigma_{\mathcal{N}, \mathrm{analytical}}$')
             plt.ylabel(r'$\log(\sigma_{\mathcal{B} / \sigma_{\mathcal{N}}})$')
 
-            plt.ylim(-1.25, 0.75)
+            # plt.ylim(-1.25, 0.75)
 
             plt.show()
 
@@ -496,8 +500,7 @@ class EvaluateBootstrapping():
 
         SAct, SR = np.meshgrid(sigma_actual, sigma_ratio)
 
-        # which of the requested values are above the critical sigma_actual
-        # values
+        # which of the requested values are above the critical sigma_actual values
         # first, evaluate the data based on the logisitc fits
         x0 = np.polyval(self.logistic_extrapolation[0], SAct.flatten())
         k = np.polyval(self.logistic_extrapolation[1], SAct.flatten())
@@ -533,6 +536,14 @@ class EvaluateBootstrapping():
                                sigma_ratio_shape[0],
                                sigma_ratio_shape[1]),
                        aspect='auto')
+
+            plt.contour(self.logistic_extrapolation_X,
+                        np.log10(self.lookup_extrapolation_Y),
+                        lookup_extrapolation_ratio,
+                        levels=[0.8, 0.85, 0.9, 0.95, 1, 1.05],
+                        # levels=[5, 10, 15, 20, 25],
+                        colors='w',
+                        linewidths=1)
             plt.colorbar()
             plt.show()
 
@@ -578,38 +589,46 @@ class InterpretBootstrapping():
                          sigma_ratio: np.ndarray):
         idx = [np.unravel_index(
             np.argmin(
-                (self.lookup_table['lookup_table']['X']
+                (self.lookup_table['lookup_table']['X']['large']
                  - sigma_analytical[i]) ** 2 +
-                (self.lookup_table['lookup_table']['Y']
+                (self.lookup_table['lookup_table']['Y']['large']
                  - sigma_ratio[i]) ** 2
             ),
-            self.lookup_table['lookup_table']['table'].shape
+            self.lookup_table['lookup_table']['table']['large'].shape
         ) for i in range(len(sigma_analytical))]
 
         sigma_actual_lookup = np.array([
-            self.lookup_table['lookup_table']['table'][idx[i]]
+            self.lookup_table['lookup_table']['table']['large'][idx[i]]
             for i in range(len(idx))
         ])
 
         idx = [np.unravel_index(
             np.argmin(
-                (self.lookup_table['lookup_table_extrapolation']['X']
+                (self.lookup_table['lookup_table']['X']['extrapolation']
                  - sigma_analytical[i]) ** 2 +
-                (self.lookup_table['lookup_table_extrapolation']['Y']
+                (self.lookup_table['lookup_table']['Y']['extrapolation']
                  - sigma_ratio[i]) ** 2
             ),
-            self.lookup_table['lookup_table_extrapolation']['table'].shape
+            self.lookup_table['lookup_table']['table']['extrapolation'].shape
         ) for i in range(len(sigma_analytical))]
 
         sigma_actual_extrapolated = np.array([
-            self.lookup_table['lookup_table_extrapolation']['table'][idx[i]]
+            self.lookup_table['lookup_table']['table']['extrapolation'][idx[i]]
             for i in range(len(idx))
         ])
 
         sigma_actual_extrapolated[
-            sigma_actual_extrapolated < self.lookup_table['critical_value']
+            sigma_actual_extrapolated
+            < self.lookup_table['critical_value']['large']
             ] = sigma_actual_lookup[
-            sigma_actual_extrapolated < self.lookup_table['critical_value']
+            sigma_actual_extrapolated
+            < self.lookup_table['critical_value']['large']
+            ]
+
+        sigma_actual_extrapolated[
+            sigma_actual_extrapolated <= 0.1
+            ] = sigma_analytical[
+            sigma_actual_extrapolated <= 0.1
             ]
 
         return sigma_actual_extrapolated
