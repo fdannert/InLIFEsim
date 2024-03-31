@@ -1,14 +1,12 @@
 from typing import Union
 import multiprocessing as mp
-from copy import deepcopy
 
 import numpy as np
 import pandas as pd
 from joblib import Parallel, delayed, parallel_config
 from joblib_progress import joblib_progress
 
-from inlifesim.util import (harmonic_number_approximation,
-                            combine_to_full_observation)
+from inlifesim.util import harmonic_number_approximation
 from inlifesim.sources import (create_star, create_planet, create_localzodi,
                                create_exozodi)
 from inlifesim.perturbation import (stellar_leakage, exozodi_leakage,
@@ -23,6 +21,7 @@ class Instrument(object):
     def __init__(self,
                  wl_bins: np.ndarray,
                  wl_bin_widths: np.ndarray,
+                 integration_time: float,
                  image_size: int,
                  diameter_ap: float,
                  flux_division: np.ndarray,
@@ -40,9 +39,7 @@ class Instrument(object):
                  phase_response: np.ndarray,
                  phase_response_chop: np.ndarray,
                  t_rot: float,
-                 t_total: float,
-                 t_exp: float,
-                 # n_sampling_rot: int,
+                 n_sampling_rot: int,
                  n_cpu: int,
                  rms_mode: str,
                  n_sampling_max: int = int(1e7),
@@ -62,7 +59,7 @@ class Instrument(object):
                  flux_planet: np.ndarray = None,
                  simultaneous_chopping: bool = False,
                  verbose: bool = False,
-                 draw_samples: bool = False,
+                 draw_samples: bool = False
                  ):
         '''
         Observatory instance to calculate instrumental noise. TODO: add example
@@ -197,11 +194,18 @@ class Instrument(object):
         self.wl_bins = wl_bins
         self.wl_bin_widths = wl_bin_widths
         self.image_size = image_size
+        self.n_sampling_rot = n_sampling_rot
+
+        if self.n_sampling_rot % 2 == 0:
+            self.n_sampling_rot += 1
+            if self.verbose:
+                print('Sampling rate was adjusted to be odd')
 
         self.n_cpu = n_cpu
         self.n_sampling_max = n_sampling_max
 
         self.simultaneous_chopping = simultaneous_chopping
+        self.t_int = integration_time
 
         # setting instrument parameters
         self.col_pos = col_pos
@@ -217,38 +221,6 @@ class Instrument(object):
         self.flux_division = flux_division
 
         self.t_rot = t_rot
-        self.t_total = t_total
-        self.t_exp = t_exp
-
-        # adjust exposure time to be a multiple of the rotation period
-        t_exp_old = deepcopy(self.t_exp)
-        t_total_old = deepcopy(self.t_total)
-        self.t_exp = self.t_rot / np.ceil(self.t_rot / self.t_exp)
-
-        # adjust total integration time to be a multiple of the exposure time
-        self.t_total = self.t_exp * np.ceil(self.t_total / self.t_exp)
-
-        # resulting numbers of samples
-        self.n_sampling_total = int(self.t_total / self.t_exp)
-
-        if self.verbose:
-            print('Adjusted exposure time from {} s to {} s'.format(
-                np.round(t_exp_old, 2),
-                np.round(self.t_exp, 2)))
-            print('Increased total integration time by {} s'.format(
-                np.round(self.t_total-t_total_old, 2)))
-            print('Total number of samples: {}'.format(self.n_sampling_total))
-
-        # create the array rotation angles
-        phi_rot_single = np.linspace(0,
-                                     2 * np.pi,
-                                     int(self.t_rot / self.t_exp),
-                                     endpoint=False)
-
-        self.phi_rot = combine_to_full_observation(arr=phi_rot_single,
-                                                   t_total=self.t_total,
-                                                   t_rot=self.t_rot,
-                                                   t_exp=self.t_exp)
 
         self.rms_mode = rms_mode
         self.d_a_rms = d_a_rms
@@ -271,11 +243,11 @@ class Instrument(object):
             self.d_y_co = 0.64e-3
 
         self.harmonic_number_n_cutoff = {
-            'a': harmonic_number_approximation(self.d_a_co*self.t_total),
-            'phi': harmonic_number_approximation(self.d_phi_co*self.t_total),
-            'pol': harmonic_number_approximation(self.d_pol_co*self.t_total),
-            'x': harmonic_number_approximation(self.d_x_co*self.t_total),
-            'y': harmonic_number_approximation(self.d_y_co*self.t_total)
+            'a': harmonic_number_approximation(self.d_a_co*self.t_rot),
+            'phi': harmonic_number_approximation(self.d_phi_co*self.t_rot),
+            'pol': harmonic_number_approximation(self.d_pol_co*self.t_rot),
+            'x': harmonic_number_approximation(self.d_x_co*self.t_rot),
+            'y': harmonic_number_approximation(self.d_y_co*self.t_rot)
         }
 
         # setting source parameters
@@ -559,7 +531,8 @@ class Instrument(object):
                 'n_sampling_max': self.n_sampling_max,
                 'harmonic_number_n_cutoff':
                     self.harmonic_number_n_cutoff,
-                't_total': self.t_total,
+                't_rot': self.t_rot,
+                't_int': self.t_int,
                 'd_a_rms': self.d_a_rms,
                 'd_phi_rms': self.d_phi_rms,
                 'd_pol_rms': self.d_pol_rms,
@@ -643,29 +616,29 @@ class Instrument(object):
 
         # calculate the PSDs of the perturbation terms
         self.d_a_psd, _, _ = create_pink_psd(
-            t_rot=self.t_total,
-            n_sampling_max=int(self.n_sampling_total / 2),
+            t_rot=self.t_rot,
+            n_sampling_max=int(self.n_sampling_rot / 2),
             harmonic_number_n_cutoff=self.harmonic_number_n_cutoff['a'],
             rms=d_a_rms,
             num_a=self.num_a
         )
 
         self.d_phi_psd, _, _ = create_pink_psd(
-            t_rot=self.t_total,
-            n_sampling_max=int(self.n_sampling_total / 2),
+            t_rot=self.t_rot,
+            n_sampling_max=int(self.n_sampling_rot / 2),
             harmonic_number_n_cutoff=self.harmonic_number_n_cutoff['phi'],
             rms=d_phi_rms,
             num_a=self.num_a
         )
 
-        params = {'n_sampling_rot': self.n_sampling_total,
+        params = {'n_sampling_rot': self.n_sampling_rot,
                   'n_outputs': self.n_outputs,
                   'pn_sgl': self.photon_rates_nchop['pn_sgl'],
                   'pn_ez': self.photon_rates_nchop['pn_ez'],
                   'pn_lz': self.photon_rates_nchop['pn_lz'],
                   'd_a_psd': self.d_a_psd,
                   'd_phi_psd': self.d_phi_psd,
-                  't_rot': self.t_total,
+                  't_rot': self.t_rot,
                   'gradient': self.grad_n_coeff[0],
                   'gradient_chop': self.grad_n_coeff_chop[0],
                   'hessian': self.hess_n_coeff[0],
@@ -830,18 +803,18 @@ class Instrument(object):
          self.photon_rates_chop['signal'],
          self.planet_signal_chop) = planet_signal(
             flux_planet=self.flux_planet,
-            t_exp=self.t_exp,
-            t_total=self.t_total,
-            t_rot=self.t_rot,
             A=self.A,
             phi=self.phi,
             phi_r=self.phi_r,
             wl_bins=self.wl_bins,
             bl=self.bl,
             num_a=self.num_a,
+            t_rot=self.t_rot,
+            n_sampling_rot=self.n_sampling_rot,
             simultaneous_chopping=self.simultaneous_chopping,
             separation_planet=self.separation_planet,
             dist_star=self.dist_star,
+            t_int=self.t_int,
         )
 
         if self.verbose:
@@ -854,7 +827,7 @@ class Instrument(object):
             A=self.A,
             phi=self.phi,
             num_a=self.num_a,
-            t_int=self.t_total,
+            t_int=self.t_int,
             flux_localzodi=self.flux_localzodi,
             b_star=self.b_star,
             b_ez=self.b_ez,
