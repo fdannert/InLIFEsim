@@ -320,27 +320,27 @@ def combine_to_full_observation(arr,
                          reps=(1, int(t_total / t_rot)))
 
         # add the last not-finished rotation
-        result = np.concatenate(
-            (result,
-             arr[:, :int(
-                 np.round(
-                     (t_total
-                      - t_rot * (t_total // t_rot))
-                     / t_exp))]
-             ),
-            axis=1
-        )
+        # result = np.concatenate(
+        #     (result,
+        #      arr[:, :int(
+        #          np.round(
+        #              (t_total
+        #               - t_rot * (t_total // t_rot))
+        #              / t_exp))]
+        #      ),
+        #     axis=1
+        # )
 
     else:
         result = np.tile(A=arr,
                          reps=int(t_total / t_rot))
 
         # add the last not-finished rotation
-        result = np.concatenate(
-            (result,
-             arr[:int(np.round(
-                     (t_total - t_rot * (t_total // t_rot)) / t_exp))]
-             ),
-        )
+        # result = np.concatenate(
+        #     (result,
+        #      arr[:int(np.round(
+        #              (t_total - t_rot * (t_total // t_rot)) / t_exp))]
+        #      ),
+        # )
 
     return result

@@ -39,7 +39,7 @@ class Instrument(object):
                  col_pos: np.ndarray,
                  phase_response: np.ndarray,
                  phase_response_chop: np.ndarray,
-                 t_rot: float,
+                 n_rot: float,
                  t_total: float,
                  t_exp: float,
                  # n_sampling_rot: int,
@@ -216,17 +216,18 @@ class Instrument(object):
         self.throughput = throughput
         self.flux_division = flux_division
 
-        self.t_rot = t_rot
         self.t_total = t_total
         self.t_exp = t_exp
+        self.n_rot = n_rot
+
+        self.t_rot = self.t_total / self.n_rot
 
         # adjust exposure time to be a multiple of the rotation period
         t_exp_old = deepcopy(self.t_exp)
         t_total_old = deepcopy(self.t_total)
         self.t_exp = self.t_rot / np.ceil(self.t_rot / self.t_exp)
-
-        # adjust total integration time to be a multiple of the exposure time
-        self.t_total = self.t_exp * np.ceil(self.t_total / self.t_exp)
+        if int(self.t_rot / self.t_exp) % 2 == 0:
+            self.t_exp = self.t_rot / (int(self.t_rot / self.t_exp) + 1)
 
         # resulting numbers of samples
         self.n_sampling_total = int(self.t_total / self.t_exp)
@@ -235,8 +236,10 @@ class Instrument(object):
             print('Adjusted exposure time from {} s to {} s'.format(
                 np.round(t_exp_old, 2),
                 np.round(self.t_exp, 2)))
-            print('Increased total integration time by {} s'.format(
-                np.round(self.t_total-t_total_old, 2)))
+            print('Will simulate {} rotations in {} days'.format(
+                self.n_rot,
+                np.round(self.t_total / (24 * 60 * 60), 2)
+            ))
             print('Total number of samples: {}'.format(self.n_sampling_total))
 
         # create the array rotation angles
