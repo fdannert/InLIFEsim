@@ -188,8 +188,6 @@ def planet_signal(separation_planet: float,
 
     #planet_template_chop = np.abs(planet_template_chop+np.min(planet_template_chop.real))-np.min(planet_template_chop.real)
 
-    chop_signal = t_exp * n_planet_chop
-
     n_planet_chop = combine_to_full_observation(arr=n_planet_chop,
                                                  t_total=t_total,
                                                  t_rot=t_rot,
@@ -201,6 +199,8 @@ def planet_signal(separation_planet: float,
         t_rot=t_rot,
         t_exp=t_exp
     )
+
+    chop_signal = t_exp * n_planet_chop
 
     photon_rates_chop_signal = (np.abs(
         (t_exp * planet_template_chop * n_planet_chop)).sum(axis=1))
