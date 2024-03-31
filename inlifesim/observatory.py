@@ -218,7 +218,7 @@ class Instrument(object):
 
         self.t_total = t_total
         self.t_exp = t_exp
-        self.n_rot = n_rot
+        self.n_rot = int(n_rot)
 
         self.t_rot = self.t_total / self.n_rot
 
@@ -566,7 +566,8 @@ class Instrument(object):
                 'd_a_rms': self.d_a_rms,
                 'd_phi_rms': self.d_phi_rms,
                 'd_pol_rms': self.d_pol_rms,
-                'flux_star': self.flux_star[i]
+                'flux_star': self.flux_star[i],
+                'n_rot': self.n_rot
             })
         if self.n_cpu == 1:
             res = []
@@ -646,19 +647,21 @@ class Instrument(object):
 
         # calculate the PSDs of the perturbation terms
         self.d_a_psd, _, _ = create_pink_psd(
-            t_rot=self.t_total,
+            t_total=self.t_total,
             n_sampling_max=int(self.n_sampling_total / 2),
             harmonic_number_n_cutoff=self.harmonic_number_n_cutoff['a'],
             rms=d_a_rms,
-            num_a=self.num_a
+            num_a=self.num_a,
+            n_rot=self.n_rot
         )
 
         self.d_phi_psd, _, _ = create_pink_psd(
-            t_rot=self.t_total,
+            t_total=self.t_total,
             n_sampling_max=int(self.n_sampling_total / 2),
             harmonic_number_n_cutoff=self.harmonic_number_n_cutoff['phi'],
             rms=d_phi_rms,
-            num_a=self.num_a
+            num_a=self.num_a,
+            n_rot=self.n_rot
         )
 
         params = {'n_sampling_rot': self.n_sampling_total,

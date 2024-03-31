@@ -288,6 +288,7 @@ def sys_noise_chop(mp_arg) -> dict:
     d_a_rms = mp_arg['d_a_rms']
     d_phi_rms = mp_arg['d_phi_rms']
     d_pol_rms = mp_arg['d_pol_rms']
+    n_rot = mp_arg['n_rot']
 
     # calculate the Fourier components of the planet template
     planet_template_c_fft = temp2freq_fft(time_series=planet_template_chop,
@@ -306,27 +307,30 @@ def sys_noise_chop(mp_arg) -> dict:
 
     # create PSDs
     d_a_psd, avg_d_a_2, d_a_b_2 = create_pink_psd(
-        t_rot=t_total,
+        t_total=t_total,
         n_sampling_max=int(len(planet_template_chop)/2),
         harmonic_number_n_cutoff=harmonic_number_n_cutoff['a'],
         rms=d_a_rms,
-        num_a=num_a
+        num_a=num_a,
+        n_rot=n_rot
     )
 
     d_phi_psd, avg_d_phi_2, d_phi_b_2 = create_pink_psd(
-        t_rot=t_total,
+        t_total=t_total,
         n_sampling_max=int(len(planet_template_chop) / 2),
         harmonic_number_n_cutoff=harmonic_number_n_cutoff['phi'],
         rms=d_phi_rms,
-        num_a=1
+        num_a=1,
+        n_rot=n_rot
     )
 
     d_pol_psd, avg_d_pol_2, d_pol_b_2 = create_pink_psd(
-        t_rot=t_total,
+        t_total=t_total,
         n_sampling_max=int(len(planet_template_chop) / 2),
         harmonic_number_n_cutoff=harmonic_number_n_cutoff['pol'],
         rms=d_pol_rms,
-        num_a=1
+        num_a=1,
+        n_rot=n_rot
     )
 
     # noise contribution
