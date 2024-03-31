@@ -308,3 +308,39 @@ def remove_non_increasing(arr1, arr2):
     arr2_inc = np.array(arr2_inc)
 
     return arr1_inc, arr2_inc
+
+
+def combine_to_full_observation(arr,
+                                t_total,
+                                t_rot,
+                                t_exp):
+
+    if len(arr.shape) > 1:
+        result = np.tile(A=arr,
+                         reps=(1, int(t_total / t_rot)))
+
+        # add the last not-finished rotation
+        result = np.concatenate(
+            (result,
+             arr[:, :int(
+                 np.round(
+                     (t_total
+                      - t_rot * (t_total // t_rot))
+                     / t_exp))]
+             ),
+            axis=1
+        )
+
+    else:
+        result = np.tile(A=arr,
+                         reps=int(t_total / t_rot))
+
+        # add the last not-finished rotation
+        result = np.concatenate(
+            (result,
+             arr[:int(np.round(
+                     (t_total - t_rot * (t_total // t_rot)) / t_exp))]
+             ),
+        )
+
+    return result

@@ -17,6 +17,9 @@ from inlifesim.util import freq2temp_fft, dict_sumover, remove_non_increasing
 def draw_sample(params,
                 return_variables=['xcorr']):
 
+    if return_variables == 'all':
+        ret_all = True
+
     size = (params['n_outputs'], params['n_draws'], params['n_sampling_rot'])
 
     rdict ={}
@@ -150,7 +153,7 @@ def draw_sample(params,
                 axis=-1
             )
 
-    if return_variables == 'all':
+    if ret_all:
         return rdict
     else:
         return {k: rdict[k] for k in return_variables}

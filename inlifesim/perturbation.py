@@ -284,15 +284,14 @@ def sys_noise_chop(mp_arg) -> dict:
     rms_mode = mp_arg['rms_mode']
     n_sampling_max = mp_arg['n_sampling_max']
     harmonic_number_n_cutoff= mp_arg['harmonic_number_n_cutoff']
-    t_rot = mp_arg['t_rot']
-    t_int = mp_arg['t_int']
+    t_total = mp_arg['t_total']
     d_a_rms = mp_arg['d_a_rms']
     d_phi_rms = mp_arg['d_phi_rms']
     d_pol_rms = mp_arg['d_pol_rms']
 
     # calculate the Fourier components of the planet template
     planet_template_c_fft = temp2freq_fft(time_series=planet_template_chop,
-                                          total_time=t_rot)
+                                          total_time=t_total)
 
     # adjust rms values
     d_a_rms, d_phi_rms, d_pol_rms, _, _ = rms_frequency_adjust(
@@ -307,7 +306,7 @@ def sys_noise_chop(mp_arg) -> dict:
 
     # create PSDs
     d_a_psd, avg_d_a_2, d_a_b_2 = create_pink_psd(
-        t_rot=t_rot,
+        t_rot=t_total,
         n_sampling_max=int(len(planet_template_chop)/2),
         harmonic_number_n_cutoff=harmonic_number_n_cutoff['a'],
         rms=d_a_rms,
@@ -315,7 +314,7 @@ def sys_noise_chop(mp_arg) -> dict:
     )
 
     d_phi_psd, avg_d_phi_2, d_phi_b_2 = create_pink_psd(
-        t_rot=t_rot,
+        t_rot=t_total,
         n_sampling_max=int(len(planet_template_chop) / 2),
         harmonic_number_n_cutoff=harmonic_number_n_cutoff['phi'],
         rms=d_phi_rms,
@@ -323,7 +322,7 @@ def sys_noise_chop(mp_arg) -> dict:
     )
 
     d_pol_psd, avg_d_pol_2, d_pol_b_2 = create_pink_psd(
-        t_rot=t_rot,
+        t_rot=t_total,
         n_sampling_max=int(len(planet_template_chop) / 2),
         harmonic_number_n_cutoff=harmonic_number_n_cutoff['pol'],
         rms=d_pol_rms,
@@ -335,7 +334,7 @@ def sys_noise_chop(mp_arg) -> dict:
 
     # polarization noise
     dn_pol = (flux_star * A ** 2 * avg_d_pol_2).sum()
-    noise_chop['pn_pa'] = np.sqrt(dn_pol * t_int)
+    noise_chop['pn_pa'] = np.sqrt(dn_pol * t_total)
 
     # calculate fourier components
     # TODO: This still assumes the same PSD for the different input apertures
@@ -343,19 +342,19 @@ def sys_noise_chop(mp_arg) -> dict:
     d_phi_j_hat_2_chop = np.full(
         shape=num_a,
         fill_value=(np.sum(d_phi_psd * np.abs(planet_template_c_fft) ** 2)
-                    / t_rot ** 5 * len(planet_template_chop) ** 2)
+                    / t_total ** 5 * len(planet_template_chop) ** 2)
     )
 
     d_a_j_hat_2_chop = np.full(
         shape=num_a,
         fill_value=(np.sum(d_a_psd * np.abs(planet_template_c_fft) ** 2)
-                    / t_rot ** 5 * len(planet_template_chop) ** 2)
+                    / t_total ** 5 * len(planet_template_chop) ** 2)
     )
 
     # first order phase noise
     noise_chop['sn_fo_phi'] = np.sum((grad_n_coeff['phi']
                                       - grad_n_coeff_chop['phi']) ** 2
-                                     * d_phi_j_hat_2_chop * t_rot ** 2)
+                                     * d_phi_j_hat_2_chop * t_total ** 2)
 
 
     # poisson noise from null floor perturbation
@@ -368,7 +367,7 @@ def sys_noise_chop(mp_arg) -> dict:
                    * d_phi_j_hat_2_chop[j])
                   for j in range(num_a)])
     )
-    noise_chop['pn_snfl'] = dn_null_floor * t_rot
+    noise_chop['pn_snfl'] = dn_null_floor * t_total
 
     # second order dadphi
     d_a_d_phi_j_hat_2_chop = np.full(
@@ -376,12 +375,12 @@ def sys_noise_chop(mp_arg) -> dict:
         fill_value=np.sum(
             np.convolve(d_a_psd[0], d_phi_psd, mode='same')
             * np.abs(planet_template_c_fft)**2
-        ) * len(planet_template_chop) ** 4 / t_rot ** 8
+        ) * len(planet_template_chop) ** 4 / t_total ** 8
     )
 
     noise_chop['sn_so_aphi'] = np.sum((hess_n_coeff['aphi']
                                        - hess_n_coeff_chop['aphi']) ** 2
-                                      * d_a_d_phi_j_hat_2_chop * t_rot ** 2)
+                                      * d_a_d_phi_j_hat_2_chop * t_total ** 2)
 
     noise_chop['sn_fo'] = noise_chop['sn_fo_phi']
     noise_chop['sn_so'] = noise_chop['sn_so_aphi']

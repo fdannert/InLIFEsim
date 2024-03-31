@@ -1,6 +1,6 @@
 import numpy as np
 from astropy.constants import au, pc
-from inlifesim.util import temp2freq_fft, freq2temp_ft
+from inlifesim.util import temp2freq_fft, freq2temp_ft, combine_to_full_observation
 from inlifesim.debug import debug_planet_signal
 
 def planet_response(flux_planet: np.ndarray,
@@ -33,9 +33,11 @@ def planet_response(flux_planet: np.ndarray,
 
 def planet_signal(separation_planet: float,
                   dist_star: float,
-                  n_sampling_rot: int,
+                  #t_rot: float,
+                  t_exp: float,
+                  t_total: float,
                   t_rot: float,
-                  t_int: float,
+                  # phi_rot: np.ndarray,
                   flux_planet: np.ndarray,
                   A: np.ndarray,
                   phi: np.ndarray,
@@ -101,10 +103,8 @@ def planet_signal(separation_planet: float,
         )
 
     theta = separation_planet * au.value / (dist_star * pc.value)
-    phi_rot = np.linspace(0, 2 * np.pi, n_sampling_rot)
+    phi_rot = np.linspace(0, 2 * np.pi, int(t_rot / t_exp))
     theta = np.array((-theta * np.cos(phi_rot), theta * np.sin(phi_rot)))
-
-    time_per_bin = t_rot / len(phi_rot)
 
     # create planet signal via Eq (9)
     n_planet = planet_response(flux_planet=flux_planet,
@@ -147,11 +147,22 @@ def planet_signal(separation_planet: float,
 
     planet_template_nchop = np.abs(planet_template_nchop)
 
-    nchop_signal = time_per_bin * n_planet_nchop / t_rot * t_int
+    nchop_signal = t_exp * n_planet_nchop
+
+    n_planet_nchop = combine_to_full_observation(arr=n_planet_nchop,
+                                                 t_total=t_total,
+                                                 t_rot=t_rot,
+                                                 t_exp=t_exp)
+
+    planet_template_nchop = combine_to_full_observation(
+        arr=planet_template_nchop,
+        t_total=t_total,
+        t_rot=t_rot,
+        t_exp=t_exp
+    )
 
     photon_rates_nchop_signal = (np.abs(
-        (time_per_bin * planet_template_nchop * n_planet_nchop)).sum(axis=1)
-                                         / t_rot * t_int)
+        (t_exp * planet_template_nchop * n_planet_nchop)).sum(axis=1))
 
     # ----- For chopped planet signal -----
     n_planet_chop = (n_planet - n_planet_r)
@@ -177,11 +188,22 @@ def planet_signal(separation_planet: float,
 
     #planet_template_chop = np.abs(planet_template_chop+np.min(planet_template_chop.real))-np.min(planet_template_chop.real)
 
-    chop_signal = time_per_bin * n_planet_chop / t_rot * t_int
+    chop_signal = t_exp * n_planet_chop
+
+    n_planet_chop = combine_to_full_observation(arr=n_planet_chop,
+                                                 t_total=t_total,
+                                                 t_rot=t_rot,
+                                                 t_exp=t_exp)
+
+    planet_template_chop = combine_to_full_observation(
+        arr=planet_template_chop,
+        t_total=t_total,
+        t_rot=t_rot,
+        t_exp=t_exp
+    )
 
     photon_rates_chop_signal = (np.abs(
-        (time_per_bin * planet_template_chop * n_planet_chop)).sum(axis=1)
-                                        ) / t_rot * t_int
+        (t_exp * planet_template_chop * n_planet_chop)).sum(axis=1))
 
     debug_planet_signal(n_planet_nchop=n_planet_nchop,
                         planet_template_nchop=planet_template_nchop,
