@@ -289,6 +289,7 @@ def sys_noise_chop(mp_arg) -> dict:
     d_phi_rms = mp_arg['d_phi_rms']
     d_pol_rms = mp_arg['d_pol_rms']
     n_rot = mp_arg['n_rot']
+    hyperrot_noise = mp_arg['hyperrot_noise']
 
     # calculate the Fourier components of the planet template
     planet_template_c_fft = temp2freq_fft(time_series=planet_template_chop,
@@ -312,7 +313,8 @@ def sys_noise_chop(mp_arg) -> dict:
         harmonic_number_n_cutoff=harmonic_number_n_cutoff['a'],
         rms=d_a_rms,
         num_a=num_a,
-        n_rot=n_rot
+        n_rot=n_rot,
+        hyperrot_noise=hyperrot_noise
     )
 
     d_phi_psd, avg_d_phi_2, d_phi_b_2 = create_pink_psd(
@@ -321,7 +323,8 @@ def sys_noise_chop(mp_arg) -> dict:
         harmonic_number_n_cutoff=harmonic_number_n_cutoff['phi'],
         rms=d_phi_rms,
         num_a=1,
-        n_rot=n_rot
+        n_rot=n_rot,
+        hyperrot_noise=hyperrot_noise
     )
 
     d_pol_psd, avg_d_pol_2, d_pol_b_2 = create_pink_psd(
@@ -330,7 +333,8 @@ def sys_noise_chop(mp_arg) -> dict:
         harmonic_number_n_cutoff=harmonic_number_n_cutoff['pol'],
         rms=d_pol_rms,
         num_a=1,
-        n_rot=n_rot
+        n_rot=n_rot,
+        hyperrot_noise=hyperrot_noise
     )
 
     # noise contribution
@@ -373,11 +377,16 @@ def sys_noise_chop(mp_arg) -> dict:
     )
     noise_chop['pn_snfl'] = dn_null_floor * t_total
 
+    if (n_rot is None) or (n_rot == 1):
+        fact = 1
+    else:
+        fact = 2
+
     # second order dadphi
     d_a_d_phi_j_hat_2_chop = np.full(
         shape=(num_a, num_a),
         fill_value=np.sum(
-            np.convolve(d_a_psd[0], d_phi_psd, mode='same')
+            np.convolve(d_a_psd[0], d_phi_psd, mode='same') * fact
             * np.abs(planet_template_c_fft)**2
         ) * len(planet_template_chop) ** 4 / t_total ** 8
     )

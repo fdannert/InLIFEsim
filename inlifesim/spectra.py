@@ -76,7 +76,8 @@ def create_pink_psd(t_total: float,
                     harmonic_number_n_cutoff: int,
                     rms: float,
                     num_a: int,
-                    n_rot: Union[int, type(None)] = None):
+                    n_rot: Union[int, type(None)] = None,
+                    hyperrot_noise: Union[str, type(None)] = None):
     '''
     Create a pink noise power spectral density (PSD)
 
@@ -121,10 +122,25 @@ def create_pink_psd(t_total: float,
         psd = np.concatenate((np.flip(psd[1:]), psd))
 
     else:
+        if hyperrot_noise is None:
+            print('Hyperrot noise not specified, using default')
+            hyperrot_noise = 'zero'
         psd = (2 * rms ** 2 * t_total ** 3 / (2 * n_sampling_max) ** 2
                / harmonic_number_n_cutoff
                / np.arange(n_rot, n_sampling_max))
-        psd = np.insert(arr=psd, obj=0, values=np.zeros(n_rot))
+        if hyperrot_noise == 'zero':
+            hyper_psd=np.zeros(n_rot)
+        elif hyperrot_noise == 'max':
+            hyper_psd = np.ones(n_rot) * np.max(psd)
+        elif hyperrot_noise == '1/f_r':
+            hyper_psd = 1 / np.arange(n_rot+1, 1, -1) * np.max(psd)
+        elif hyperrot_noise == '1/f':
+            hyper_psd = 1 / np.arange(1, n_rot+1) * np.max(psd) * (n_rot+1)
+        else:
+            raise ValueError('Hyperrotational noise mode not recognized')
+
+        psd = np.insert(arr=psd, obj=0, values=hyper_psd)
+
         psd = np.insert(arr=psd, obj=0, values=0)
         psd = np.concatenate((np.flip(psd[1:]), psd))
 

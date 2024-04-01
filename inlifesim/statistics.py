@@ -108,6 +108,12 @@ def draw_sample(params,
     rdict['timeseries'] = (rdict['noise_timeseries']
                            + params['planet_signal'])
 
+    rdict['noise_timeseries_singlebw'] = ((rdict['pn_timeseries'][0]
+                                  + rdict['sys_timeseries']))
+
+    rdict['timeseries_singlebw'] = (rdict['noise_timeseries_singlebw']
+                           + params['planet_signal'])
+
     # do the cross correlation
     rdict['xcorr'] = np.sum(rdict['timeseries'] * params['planet_template'],
                             axis=-1)

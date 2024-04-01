@@ -45,6 +45,7 @@ class Instrument(object):
                  # n_sampling_rot: int,
                  n_cpu: int,
                  rms_mode: str,
+                 hyperrot_noise: Union[str, type(None)] = None,
                  n_sampling_max: int = int(1e7),
                  d_a_rms: Union[float, type(None)] = None,
                  d_phi_rms: Union[float, type(None)] = None,
@@ -63,6 +64,7 @@ class Instrument(object):
                  simultaneous_chopping: bool = False,
                  verbose: bool = False,
                  draw_samples: bool = False,
+                 get_single_bracewell: bool = False,
                  ):
         '''
         Observatory instance to calculate instrumental noise. TODO: add example
@@ -189,6 +191,7 @@ class Instrument(object):
         self.n_draws = n_draws
         self.n_draws_per_run = n_draws_per_run
         self.time_samples_return_values = time_series_return_values
+        self.get_single_bracewell = get_single_bracewell
 
         if self.draw_samples and (n_draws is None):
             raise ValueError('Sample size must be set in sampling mode')
@@ -230,7 +233,8 @@ class Instrument(object):
             self.t_exp = self.t_rot / (int(self.t_rot / self.t_exp) + 1)
 
         # resulting numbers of samples
-        self.n_sampling_total = int(self.t_total / self.t_exp)
+        self.n_sampling_total = int(np.round(self.t_total / self.t_exp))
+        self.n_sampling_rot = int(np.round(self.t_rot / self.t_exp))
 
         if self.verbose:
             print('Adjusted exposure time from {} s to {} s'.format(
@@ -245,13 +249,15 @@ class Instrument(object):
         # create the array rotation angles
         phi_rot_single = np.linspace(0,
                                      2 * np.pi,
-                                     int(self.t_rot / self.t_exp),
+                                     self.n_sampling_rot,
                                      endpoint=False)
 
         self.phi_rot = combine_to_full_observation(arr=phi_rot_single,
                                                    t_total=self.t_total,
                                                    t_rot=self.t_rot,
                                                    t_exp=self.t_exp)
+
+        self.hyperrot_noise = hyperrot_noise
 
         self.rms_mode = rms_mode
         self.d_a_rms = d_a_rms
@@ -567,7 +573,8 @@ class Instrument(object):
                 'd_phi_rms': self.d_phi_rms,
                 'd_pol_rms': self.d_pol_rms,
                 'flux_star': self.flux_star[i],
-                'n_rot': self.n_rot
+                'n_rot': self.n_rot,
+                'hyperrot_noise': self.hyperrot_noise
             })
         if self.n_cpu == 1:
             res = []
@@ -652,7 +659,8 @@ class Instrument(object):
             harmonic_number_n_cutoff=self.harmonic_number_n_cutoff['a'],
             rms=d_a_rms,
             num_a=self.num_a,
-            n_rot=self.n_rot
+            n_rot=self.n_rot,
+            hyperrot_noise=self.hyperrot_noise
         )
 
         self.d_phi_psd, _, _ = create_pink_psd(
@@ -661,8 +669,14 @@ class Instrument(object):
             harmonic_number_n_cutoff=self.harmonic_number_n_cutoff['phi'],
             rms=d_phi_rms,
             num_a=self.num_a,
-            n_rot=self.n_rot
+            n_rot=self.n_rot,
+            hyperrot_noise=self.hyperrot_noise
         )
+
+        if self.get_single_bracewell:
+            ps = self.planet_signal_nchop
+        else:
+            ps = self.planet_signal_chop
 
         params = {'n_sampling_rot': self.n_sampling_total,
                   'n_outputs': self.n_outputs,
@@ -676,7 +690,7 @@ class Instrument(object):
                   'gradient_chop': self.grad_n_coeff_chop[0],
                   'hessian': self.hess_n_coeff[0],
                   'hessian_chop': self.hess_n_coeff_chop[0],
-                  'planet_signal': self.planet_signal_chop,
+                  'planet_signal': ps,
                   'planet_template': self.planet_template_chop}
 
         if self.n_cpu == 1:
@@ -831,7 +845,7 @@ class Instrument(object):
 
         (self.planet_template_nchop,
          self.photon_rates_nchop['signal'],
-         _,
+         self.planet_signal_nchop,
          self.planet_template_chop,
          self.photon_rates_chop['signal'],
          self.planet_signal_chop) = planet_signal(
@@ -845,6 +859,7 @@ class Instrument(object):
             wl_bins=self.wl_bins,
             bl=self.bl,
             num_a=self.num_a,
+            n_sampling_rot=self.n_sampling_rot,
             simultaneous_chopping=self.simultaneous_chopping,
             separation_planet=self.separation_planet,
             dist_star=self.dist_star,

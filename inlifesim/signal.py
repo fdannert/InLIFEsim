@@ -37,6 +37,7 @@ def planet_signal(separation_planet: float,
                   t_exp: float,
                   t_total: float,
                   t_rot: float,
+                  n_sampling_rot: int,
                   # phi_rot: np.ndarray,
                   flux_planet: np.ndarray,
                   A: np.ndarray,
@@ -103,7 +104,7 @@ def planet_signal(separation_planet: float,
         )
 
     theta = separation_planet * au.value / (dist_star * pc.value)
-    phi_rot = np.linspace(0, 2 * np.pi, int(t_rot / t_exp))
+    phi_rot = np.linspace(0, 2 * np.pi, n_sampling_rot)
     theta = np.array((-theta * np.cos(phi_rot), theta * np.sin(phi_rot)))
 
     # create planet signal via Eq (9)
@@ -145,9 +146,7 @@ def planet_signal(separation_planet: float,
                              / np.std(planet_template_nchop,
                                       axis=1)[:, np.newaxis])
 
-    planet_template_nchop = np.abs(planet_template_nchop)
-
-    nchop_signal = t_exp * n_planet_nchop
+    # planet_template_nchop = np.abs(planet_template_nchop)
 
     n_planet_nchop = combine_to_full_observation(arr=n_planet_nchop,
                                                  t_total=t_total,
@@ -160,6 +159,8 @@ def planet_signal(separation_planet: float,
         t_rot=t_rot,
         t_exp=t_exp
     )
+
+    nchop_signal = t_exp * n_planet_nchop
 
     photon_rates_nchop_signal = (np.abs(
         (t_exp * planet_template_nchop * n_planet_nchop)).sum(axis=1))
