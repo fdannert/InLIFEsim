@@ -19,6 +19,8 @@ def draw_sample(params,
 
     if return_variables == 'all':
         ret_all = True
+    else:
+        ret_all = False
 
     size = (params['n_outputs'], params['n_draws'], params['n_sampling_rot'])
 
