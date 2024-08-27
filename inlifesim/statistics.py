@@ -56,6 +56,9 @@ def draw_sample(params,
         n_draws=params['n_draws'],
         n_outputs=params['d_a_psd'].shape[0])
 
+    print(d_a_time.shape)
+    print(d_phi_time.shape)
+
     rdict['d_a_time'] = d_a_time
     rdict['d_phi_time'] = d_phi_time
     rdict['d_a_ft'] = d_a_ft
