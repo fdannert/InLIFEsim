@@ -257,6 +257,9 @@ class Instrument(object):
                                                    t_rot=self.t_rot,
                                                    t_exp=self.t_exp)
 
+        if self.verbose:
+            print('Number of rotation angles: {}'.format(len(self.phi_rot)))
+
         self.hyperrot_noise = hyperrot_noise
 
         self.rms_mode = rms_mode
@@ -867,6 +870,9 @@ class Instrument(object):
 
         if self.verbose:
             print('[Done]')
+            print('Shape of the planet template: {}'.format(
+                self.planet_template_chop.shape
+            ))
             print('Calculating fundamental noise ...', end=' ')
 
         (self.photon_rates_nchop['pn_sgl'],
