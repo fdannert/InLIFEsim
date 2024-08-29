@@ -113,6 +113,9 @@ class Instrument(object):
             phase response of each collector arm in the chopped state in [rad]
         t_rot : float
             rotation period of the array in [s]
+        n_rot: int
+            number of array rotations over the observation. Needs to be an odd
+            number
         chopping : str
             run calculation with or without chopping, 'chop', 'nchop', 'both'
         pix_per_wl : TYPE
@@ -224,6 +227,11 @@ class Instrument(object):
         self.n_rot = int(n_rot)
 
         self.t_rot = self.t_total / self.n_rot
+
+        if self.n_rot % 2 == 0:
+            # todo: make even number of rotations possible
+            raise ValueError('Number of rotations must be odd')
+
 
         # adjust exposure time to be a multiple of the rotation period
         t_exp_old = deepcopy(self.t_exp)
@@ -529,16 +537,19 @@ class Instrument(object):
         return gradient_vector, hessian_matrix
 
     def combine_fundamental(self):
+        # because of the incoherent combination of the final outputs, see
+        # Mugnier 2006
+        if self.simultaneous_chopping:
+            # Thank you Philipp!
+            self.photon_rates_nchop['pn_sgl'] *= np.sqrt(2)
+            self.photon_rates_nchop['pn_ez'] *= np.sqrt(2)
+            self.photon_rates_nchop['pn_lz'] *= np.sqrt(2)
+
         self.photon_rates_nchop['fundamental'] = np.sqrt(
             self.photon_rates_nchop['pn_sgl'] ** 2
             + self.photon_rates_nchop['pn_ez'] ** 2
             + self.photon_rates_nchop['pn_lz'] ** 2
         )
-
-        # because of the incoherent combination of the final outputs, see
-        # Mugnier 2006
-        if self.simultaneous_chopping:
-            self.photon_rates_chop['fundamental'] *= np.sqrt(2)
 
         self.photon_rates_nchop['snr'] = (
                 self.photon_rates_nchop['signal']

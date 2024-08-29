@@ -206,6 +206,9 @@ def planet_signal(separation_planet: float,
     photon_rates_chop_signal = (np.abs(
         (t_exp * planet_template_chop * n_planet_chop)).sum(axis=1))
 
+    # photon_rates_chop_signal = (np.abs(
+    #     (t_exp * n_planet_chop))).sum(axis=1)
+
     debug_planet_signal(n_planet_nchop=n_planet_nchop,
                         planet_template_nchop=planet_template_nchop,
                         n_planet_chop=n_planet_chop,
