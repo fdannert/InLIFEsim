@@ -230,7 +230,7 @@ def create_exozodi(wl_bins: np.ndarray,
     # Sigma_{m,0} from Kennedy+2015 (doi:10.1088/0067-0049/216/2/23)
     sigma_zero = 7.11889e-8
 
-    # identify all pixels where the radius is larges than the inner radius by
+    # identify all pixels where the radius is larger than the inner radius by
     # Kennedy+2015
     r_cond = ((r_au >= r_in)
               & (r_au <= image_size / 2 * au_pix[:, np.newaxis, np.newaxis]))

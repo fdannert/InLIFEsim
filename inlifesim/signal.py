@@ -136,7 +136,9 @@ def planet_signal(separation_planet: float,
     # removal of even components and DC
     nfft_odd = nfft
     if not simultaneous_chopping:
-        nfft_odd[:, ::2] = 0
+        nfft_odd[:, int(nfft_odd.shape[1] / 2)::2] = 0
+        nfft_odd[:, :int(nfft_odd.shape[1] / 2)] = np.flip(
+            nfft_odd[:, int(nfft_odd.shape[1] / 2 + 1):], axis=1)
 
     # transform back into time domain
     planet_template_nchop = freq2temp_ft(nfft_odd, t_rot)
@@ -177,7 +179,10 @@ def planet_signal(separation_planet: float,
     # creation of template function
     # removal of even components and DC
     nfft_odd_chop = nfft_chop
-    nfft_odd_chop[:, ::2] = 0
+    nfft_odd_chop[:, int(nfft_odd_chop.shape[1] / 2)::2] = 0
+    nfft_odd_chop[:, :int(nfft_odd_chop.shape[1] / 2)] = np.flip(
+        nfft_odd_chop[:, int(nfft_odd_chop.shape[1] / 2 + 1):], axis=1)
+
 
     # transform back into time domain
     planet_template_chop = freq2temp_ft(nfft_odd_chop, t_rot)

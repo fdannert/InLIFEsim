@@ -127,15 +127,15 @@ def create_pink_psd(t_total: float,
             hyperrot_noise = 'zero'
         psd = (2 * rms ** 2 * t_total ** 3 / (2 * n_sampling_max) ** 2
                / harmonic_number_n_cutoff
-               / np.arange(n_rot, n_sampling_max))
+               / np.arange(n_rot-1, n_sampling_max) * n_rot)
         if hyperrot_noise == 'zero':
-            hyper_psd=np.zeros(n_rot)
+            hyper_psd=np.zeros(n_rot-1)
         elif hyperrot_noise == 'max':
-            hyper_psd = np.ones(n_rot) * np.max(psd)
+            hyper_psd = np.ones(n_rot-1) * np.max(psd)
         elif hyperrot_noise == '1/f_r':
-            hyper_psd = 1 / np.arange(n_rot+1, 1, -1) * np.max(psd)
+            hyper_psd = 1 / np.arange(n_rot, 1, -1) * np.max(psd)
         elif hyperrot_noise == '1/f':
-            hyper_psd = 1 / np.arange(1, n_rot+1) * np.max(psd) * (n_rot+1)
+            hyper_psd = 1 / np.arange(1, n_rot) * np.max(psd) * (n_rot)
         else:
             raise ValueError('Hyperrotational noise mode not recognized')
 

@@ -65,6 +65,7 @@ class Instrument(object):
                  verbose: bool = False,
                  draw_samples: bool = False,
                  get_single_bracewell: bool = False,
+                 instrumental_source: Union[None, str] = None,
                  ):
         '''
         Observatory instance to calculate instrumental noise. TODO: add example
@@ -195,6 +196,7 @@ class Instrument(object):
         self.n_draws_per_run = n_draws_per_run
         self.time_samples_return_values = time_series_return_values
         self.get_single_bracewell = get_single_bracewell
+        self.instrumental_source = instrumental_source
 
         if self.draw_samples and (n_draws is None):
             raise ValueError('Sample size must be set in sampling mode')
@@ -483,12 +485,12 @@ class Instrument(object):
                                       for k in self.hess_star.keys()})
 
             self.grad_n_coeff_chop.append({k: self.grad_star_chop[k][i]
-                                         + self.grad_ez_chop[k][i]
-                                         + self.grad_lz[k][i]
-                                      for k in self.grad_star.keys()})
+                                              + self.grad_ez_chop[k][i]
+                                              + self.grad_lz[k][i]
+                                           for k in self.grad_star.keys()})
             self.hess_n_coeff_chop.append({k: self.hess_star_chop[k][i]
-                                         + self.hess_ez_chop[k][i]
-                                      for k in self.hess_star.keys()})
+                                              + self.hess_ez_chop[k][i]
+                                           for k in self.hess_star.keys()})
 
     def build_gradient_hessian(
             self,
@@ -569,15 +571,11 @@ class Instrument(object):
         # prepare variable dictionary to send to multiprocessing workers
         mp_args = []
         for i in range(self.wl_bins.shape[0]):
-            mp_args.append({
+            arg = {
                 'A': self.A,
                 'wl': self.wl_bins[i],
                 'num_a': self.num_a,
                 'planet_template_chop': self.planet_template_chop[i, :],
-                'grad_n_coeff': self.grad_n_coeff[i],
-                'hess_n_coeff': self.hess_n_coeff[i],
-                'grad_n_coeff_chop': self.grad_n_coeff_chop[i],
-                'hess_n_coeff_chop': self.hess_n_coeff_chop[i],
                 'rms_mode': self.rms_mode,
                 'n_sampling_max': self.n_sampling_max,
                 'harmonic_number_n_cutoff':
@@ -589,7 +587,45 @@ class Instrument(object):
                 'flux_star': self.flux_star[i],
                 'n_rot': self.n_rot,
                 'hyperrot_noise': self.hyperrot_noise
-            })
+            }
+
+            if self.instrumental_source is None:
+                arg['grad_n_coeff'] = self.grad_n_coeff[i]
+                arg['hess_n_coeff'] = self.hess_n_coeff[i]
+                arg['grad_n_coeff_chop'] = self.grad_n_coeff_chop[i]
+                arg['hess_n_coeff_chop'] = self.hess_n_coeff_chop[i]
+
+            elif self.instrumental_source == 'star':
+                arg['grad_n_coeff'] = {k: self.grad_star[k][i]
+                                       for k in self.grad_star.keys()}
+                arg['hess_n_coeff'] = {k: self.hess_star[k][i]
+                                       for k in self.hess_star.keys()}
+                arg['grad_n_coeff_chop'] = {
+                    k: self.grad_star_chop[k][i]
+                    for k in self.grad_star_chop.keys()
+                }
+                arg['hess_n_coeff_chop'] = {
+                    k: self.hess_star_chop[k][i]
+                    for k in self.hess_star_chop.keys()
+                }
+
+            elif self.instrumental_source == 'ez':
+                arg['grad_n_coeff'] = {k: self.grad_ez[k][i]
+                                       for k in self.grad_ez.keys()}
+                arg['hess_n_coeff'] = {k: self.hess_ez[k][i]
+                                       for k in self.hess_ez.keys()}
+                arg['grad_n_coeff_chop'] = {
+                    k: self.grad_ez_chop[k][i]
+                    for k in self.grad_ez_chop.keys()
+                }
+                arg['hess_n_coeff_chop'] = {
+                    k: self.hess_ez_chop[k][i]
+                    for k in self.hess_ez_chop.keys()
+                }
+
+            else:
+                raise ValueError('Instrumental source not recognized')
+            mp_args.append(arg)
         if self.n_cpu == 1:
             res = []
             for i in range(self.wl_bins.shape[0]):
@@ -617,7 +653,7 @@ class Instrument(object):
         self.photon_rates_chop['pn'] = np.sqrt(
             (self.photon_rates_chop['pn_sgl'] ** 2
             # the sqaure is missing on purpose, see perturbation.py
-             + self.photon_rates_chop['pn_snfl']
+             + self.photon_rates_chop['pn_snfl'] ** 2
              + self.photon_rates_chop['pn_lz'] ** 2
              + self.photon_rates_chop['pn_ez'] ** 2
              + self.photon_rates_chop['pn_pa'] ** 2).astype(float)
@@ -631,7 +667,7 @@ class Instrument(object):
 
         self.photon_rates_chop['noise'] = np.sqrt(
             (self.photon_rates_chop['pn'] ** 2
-             + self.photon_rates_chop['sn']).astype(float)
+             + self.photon_rates_chop['sn'] ** 2).astype(float)
         )
 
         self.photon_rates_chop['snr'] = (self.photon_rates_chop['signal']
