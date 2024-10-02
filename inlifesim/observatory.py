@@ -777,10 +777,17 @@ class Instrument(object):
             # properly sized arrays
             self.time_samples = {}
             time_samples_head = {}
+
+            dtype_c = ['d_a_ft', 'd_phi_ft']
+
             for k in results[0].keys():
                 size = np.array(results[0][k].shape)
                 size[np.argwhere(size == self.n_draws_per_run)] = self.n_draws
-                self.time_samples[k] = np.zeros(size, dtype=complex)
+                if k in dtype_c:
+                    dtype = complex
+                else:
+                    dtype = float
+                self.time_samples[k] = np.zeros(size, dtype=dtype)
                 time_samples_head[k] = 0
 
             # fill the arrays with the results
