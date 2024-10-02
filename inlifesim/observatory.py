@@ -780,7 +780,7 @@ class Instrument(object):
             for k in results[0].keys():
                 size = np.array(results[0][k].shape)
                 size[np.argwhere(size == self.n_draws_per_run)] = self.n_draws
-                self.time_samples[k] = np.zeros(size)
+                self.time_samples[k] = np.zeros(size, dtype=complex)
                 time_samples_head[k] = 0
 
             # fill the arrays with the results

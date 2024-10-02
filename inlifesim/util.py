@@ -344,3 +344,54 @@ def combine_to_full_observation(arr,
         # )
 
     return result
+
+def get_wl_bins_const_spec_res(wl_min: float,
+                               wl_max: float,
+                               spec_res: float):
+    """
+    Create the wavelength bins for the given spectral resolution and wavelength
+    limits.
+
+    Parameters:
+    wl_min (float): The minimum wavelength in [um].
+    wl_max (float): The maximum wavelength in [um].
+    spec_res (float): The spectral resolution.
+
+    Returns:
+        wl_bins (np.ndarray): The central values of the spectral bins in the
+            wavelength regime in [m].
+        wl_bin_widths (np.ndarray): The widths of the spectral wavelength bins
+            in [m].
+        wl_bin_edges (np.ndarray): The edges of the spectral wavelength bins
+            in [m].
+    """
+
+    wl_edge = wl_min
+    wl_bins = []
+    wl_bin_widths = []
+    wl_bin_edges = [wl_edge]
+
+    while wl_edge < wl_max:
+
+        # set the wavelength bin width according to the spectral resolution
+        wl_bin_width = wl_edge / spec_res / \
+                       (1 - 1 / spec_res / 2)
+
+        # make the last bin shorter when it hits the wavelength limit
+        if wl_edge + wl_bin_width > wl_max:
+            wl_bin_width = wl_max - wl_edge
+
+        # calculate the center and edges of the bins
+        wl_center = wl_edge + wl_bin_width / 2
+        wl_edge += wl_bin_width
+
+        wl_bins.append(wl_center)
+        wl_bin_widths.append(wl_bin_width)
+        wl_bin_edges.append(wl_edge)
+
+    # convert everything to [m]
+    wl_bins = np.array(wl_bins) * 1e-6  # in m
+    wl_bin_widths = np.array(wl_bin_widths) * 1e-6  # in m
+    wl_bin_edges = np.array(wl_bin_edges) * 1e-6  # in m
+
+    return wl_bins, wl_bin_widths, wl_bin_edges
