@@ -487,8 +487,13 @@ def test_dist(data: np.ndarray,
         else:
             raise ValueError('Mode not recognized')
 
+        if not fit:
+            color_sec = color
+        else:
+            color_sec = 'k'
+
         ax[0].plot(q_theo, pdf_guess,
-                   color='k', ls='--', lw=0.75, alpha=0.5,
+                   color=color_sec, ls='--', lw=0.75, alpha=0.5,
                    label='Distribution guess (hist)')
 
         if y_log:
@@ -533,7 +538,7 @@ def test_dist(data: np.ndarray,
                            color='k', alpha=0.5, lw=0.75, ls='--')
             else:
                 ax[1].plot([-lim, lim], [-lim, lim],
-                           color='k', lw=0.75, ls='--')
+                           color=color_sec, lw=0.75, ls='--')
 
             ax[1].text(0.95, 0.05, f'$R^2 = {r_2:.5f}$',
                        transform=ax[1].transAxes, va='bottom', ha='right')

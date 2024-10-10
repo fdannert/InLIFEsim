@@ -350,22 +350,29 @@ def sys_noise_chop(mp_arg) -> dict:
     # calculate fourier components
     # TODO: This still assumes the same PSD for the different input apertures
 
+    # d_phi_j_hat_2_chop = np.full(
+    #     shape=num_a,
+    #     fill_value=(np.sum(d_phi_psd[int(len(d_phi_psd)/2):] * np.abs(planet_template_c_fft[int(len(planet_template_c_fft)/2):]) ** 2)
+    #                 / t_total ** 5 * (len(planet_template_chop)/2) ** 2)
+    # )
+
     d_phi_j_hat_2_chop = np.full(
         shape=num_a,
-        fill_value=(np.sum(d_phi_psd[int(len(d_phi_psd)/2):] * np.abs(planet_template_c_fft[int(len(planet_template_c_fft)/2):]) ** 2)
-                    / t_total ** 5 * (len(planet_template_chop)/2) ** 2)
+        fill_value=(np.sum(d_phi_psd * np.abs(
+            planet_template_c_fft) ** 2)
+                    / t_total ** 5 * len(planet_template_chop) ** 4)
     )
 
     d_a_j_hat_2_chop = np.full(
         shape=num_a,
         fill_value=(np.sum(d_a_psd * np.abs(planet_template_c_fft) ** 2)
-                    / t_total ** 5 * len(planet_template_chop) ** 2)
+                    / t_total ** 5 * len(planet_template_chop) ** 4)
     )
 
     # first order phase noise
     noise_chop['sn_fo_phi'] = np.sum((grad_n_coeff['phi']
                                       - grad_n_coeff_chop['phi']) ** 2
-                                     * d_phi_j_hat_2_chop * t_total ** 2)
+                                     * d_phi_j_hat_2_chop)
 
 
     # poisson noise from null floor perturbation
@@ -391,17 +398,25 @@ def sys_noise_chop(mp_arg) -> dict:
     #     ) * len(planet_template_chop) ** 4 / t_total ** 8 / n_rot
     # )
 
+    # d_a_d_phi_j_hat_2_chop = np.full(
+    #     shape=(num_a, num_a),
+    #     fill_value=np.sum(
+    #         np.convolve(d_a_psd[0][int(len(d_a_psd[0]) / 2):], d_phi_psd[int(len(d_phi_psd)/2):], mode='same')
+    #         * np.abs(planet_template_c_fft[int(len(planet_template_c_fft)/2):])**2
+    #     ) * (len(planet_template_chop)/2) ** 4 / t_total ** 8 / n_rot * 2
+    # )
+
     d_a_d_phi_j_hat_2_chop = np.full(
         shape=(num_a, num_a),
         fill_value=np.sum(
-            np.convolve(d_a_psd[0][int(len(d_a_psd[0]) / 2):], d_phi_psd[int(len(d_phi_psd)/2):], mode='same')
-            * np.abs(planet_template_c_fft[int(len(planet_template_c_fft)/2):])**2
-        ) * (len(planet_template_chop)/2) ** 4 / t_total ** 8 / n_rot * 2
+            np.convolve(d_a_psd[0], d_phi_psd, mode='same')
+            * np.abs(planet_template_c_fft) ** 2
+        ) * len(planet_template_chop) ** 6 / t_total ** 8 / n_rot
     )
 
     noise_chop['sn_so_aphi'] = np.sum((hess_n_coeff['aphi']
                                        - hess_n_coeff_chop['aphi']) ** 2
-                                      * 2 * d_a_d_phi_j_hat_2_chop * t_total ** 2)
+                                      * 2 * d_a_d_phi_j_hat_2_chop)
 
     noise_chop['sn_fo'] = noise_chop['sn_fo_phi']
     noise_chop['sn_so'] = noise_chop['sn_so_aphi']

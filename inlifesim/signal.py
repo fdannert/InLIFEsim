@@ -1,6 +1,9 @@
 import numpy as np
 from astropy.constants import au, pc
-from inlifesim.util import temp2freq_fft, freq2temp_ft, combine_to_full_observation
+from tqdm import tqdm
+
+from inlifesim.util import (temp2freq_fft, freq2temp_ft, freq2temp_fft,
+                            combine_to_full_observation)
 from inlifesim.debug import debug_planet_signal
 
 def planet_response(flux_planet: np.ndarray,
@@ -11,25 +14,49 @@ def planet_response(flux_planet: np.ndarray,
                     num_a: int,
                     theta: np.ndarray,
                     phi_rot: np.ndarray):
-    n_planet = np.swapaxes(np.array(
-        [flux_planet
-         * np.array(
-            [np.array(
-                [A[j] * A[k]
-                 * (np.cos(phi[j] - phi[k])
-                    * np.cos(
-                            2 * np.pi / wl_bins
-                            * (bl[0, j, k] * theta[0, l] + bl[1, j, k] * theta[1, l])
-                        )
-                    - np.sin(phi[j] - phi[k])
-                    * np.sin(
-                            2 * np.pi / wl_bins
-                            * (bl[0, j, k] * theta[0, l] + bl[1, j, k] * theta[1, l])))
-                 for k in range(num_a)]).sum(axis=0)
-             for j in range(num_a)]).sum(axis=0)
-         for l in range(len(phi_rot))]), 0, 1)
+
+    #  old version:
+    # n_planet = np.swapaxes(np.array(
+    #     [flux_planet
+    #      * np.array(
+    #         [np.array(
+    #             [A[j] * A[k]
+    #              * (np.cos(phi[j] - phi[k])
+    #                 * np.cos(
+    #                         2 * np.pi / wl_bins
+    #                         * (bl[0, j, k] * theta[0, l] + bl[1, j, k] * theta[1, l])
+    #                     )
+    #                 - np.sin(phi[j] - phi[k])
+    #                 * np.sin(
+    #                         2 * np.pi / wl_bins
+    #                         * (bl[0, j, k] * theta[0, l] + bl[1, j, k] * theta[1, l])))
+    #              for k in range(num_a)]).sum(axis=0)
+    #          for j in range(num_a)]).sum(axis=0)
+    #      for l in range(len(phi_rot))]), 0, 1)
+    #
+    # return n_planet
+
+    # vectorized version
+
+    dp_matrix = np.tensordot(bl, theta, axes=([0], [0]))
+
+    n_planet = np.sum(np.outer(A, A)[np.newaxis, :, :, np.newaxis] * (
+        np.cos(
+            phi[:, np.newaxis] - phi[np.newaxis, :]
+        )[np.newaxis, :, :, np.newaxis]
+        * np.cos(
+        2 * np.pi / wl_bins[:, np.newaxis, np.newaxis, np.newaxis]
+        * dp_matrix[np.newaxis, ]) -
+        np.sin(
+            phi[:, np.newaxis] - phi[np.newaxis, :]
+        )[np.newaxis, :, :, np.newaxis]
+        * np.sin(
+        2 * np.pi / wl_bins[:, np.newaxis, np.newaxis, np.newaxis]
+        * dp_matrix[np.newaxis, ])
+    ), axis=(1, 2)) * flux_planet[:, np.newaxis]
 
     return n_planet
+
 
 def planet_signal(separation_planet: float,
                   dist_star: float,
@@ -46,7 +73,8 @@ def planet_signal(separation_planet: float,
                   wl_bins: np.ndarray,
                   bl: np.ndarray,
                   num_a: int,
-                  simultaneous_chopping: bool
+                  simultaneous_chopping: bool,
+                  phi_rot_start: float = 0,
                   ):
     """
     Calculates the planet signal and template function for the planet signal
@@ -104,7 +132,9 @@ def planet_signal(separation_planet: float,
         )
 
     theta = separation_planet * au.value / (dist_star * pc.value)
-    phi_rot = np.linspace(0, 2 * np.pi, n_sampling_rot)
+    phi_rot = np.linspace(phi_rot_start,
+                          phi_rot_start + 2 * np.pi,
+                          n_sampling_rot)
     theta = np.array((-theta * np.cos(phi_rot), theta * np.sin(phi_rot)))
 
     # create planet signal via Eq (9)
@@ -141,7 +171,7 @@ def planet_signal(separation_planet: float,
             nfft_odd[:, int(nfft_odd.shape[1] / 2 + 1):], axis=1)
 
     # transform back into time domain
-    planet_template_nchop = freq2temp_ft(nfft_odd, t_rot)
+    planet_template_nchop = freq2temp_fft(nfft_odd, t_rot)
 
     # normalize the template function to rms of one
     planet_template_nchop = (planet_template_nchop
@@ -185,7 +215,7 @@ def planet_signal(separation_planet: float,
 
 
     # transform back into time domain
-    planet_template_chop = freq2temp_ft(nfft_odd_chop, t_rot)
+    planet_template_chop = freq2temp_fft(nfft_odd_chop, t_rot)
 
     # normalize the template function to rms of one
     planet_template_chop = (planet_template_chop
@@ -359,3 +389,66 @@ def fundamental_noise(A: np.ndarray,
 
     return (photon_rates_nchop_pn_sgl, photon_rates_nchop_pn_ez,
             photon_rates_nchop_pn_lz)
+
+def create_template_grid(
+        max_ang_sep: float,
+        n_grid: int,
+        n_sampling_rot: int,
+        A: np.ndarray,
+        phi: np.ndarray,
+        phi_r: np.ndarray,
+        wl_bins: np.ndarray,
+        bl: np.ndarray,
+        num_a: int,
+        flux_planet: np.ndarray,
+        dist_star: float,
+        t_total: float,
+        t_rot: float,
+        t_exp: float,
+        simultaneous_chopping: bool = True):
+
+    if not simultaneous_chopping:
+        raise ValueError(
+            'Currently, only simultaneous chopping is implemented'
+        )
+
+    theta_x, theta_y = np.meshgrid(
+        np.linspace(-max_ang_sep, max_ang_sep, n_grid),
+        np.linspace(-max_ang_sep, max_ang_sep, n_grid)
+    )
+
+    templates_nchop = np.zeros((n_grid, n_grid, len(wl_bins), n_sampling_rot))
+    templates_chop = np.zeros((n_grid, n_grid, len(wl_bins), n_sampling_rot))
+
+    for i in tqdm(range(n_grid)):
+        for j in range(n_grid):
+
+            sep = np.sqrt(theta_x[i, j] ** 2 + theta_y[i, j] ** 2) * dist_star
+            ang = np.arctan2(theta_y[i, j], theta_x[i, j])
+
+            template_nchop, _, _, template_chop, _, _ = planet_signal(
+                separation_planet=sep,
+            dist_star=dist_star,
+            # t_rot: float,
+            t_exp=t_exp,
+            t_total=t_total,
+            t_rot=t_rot,
+            n_sampling_rot=n_sampling_rot,
+            flux_planet=flux_planet,
+            A=A,
+            phi=phi,
+            phi_r=phi_r,
+            wl_bins=wl_bins,
+            bl=bl,
+            num_a=num_a,
+            simultaneous_chopping=True,
+            phi_rot_start=ang,
+            )
+
+            templates_nchop[i, j, :, :] = template_nchop
+            templates_chop[i, j, :, :] = template_chop
+
+    return templates_nchop, templates_chop
+
+
+
