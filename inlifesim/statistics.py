@@ -395,8 +395,8 @@ def get_qq(data: np.ndarray,
     q = {'theo': np.append(q_good['theo'], q_fail['theo']),
          'sample': np.append(q_good['sample'], q_fail['sample'])}
 
-    ss_res = np.sum((q['sample'] - q['theo']) ** 2)
-    ss_tot = np.sum((q['sample'] - np.mean(q['sample'])) ** 2)
+    ss_res = np.nansum((q['sample'] - q['theo']) ** 2)
+    ss_tot = np.nansum((q['sample'] - np.nanmean(q['sample'])) ** 2)
     r_2 = 1 - ss_res / ss_tot
 
     return q, q_good, q_fail, r_2
