@@ -385,7 +385,8 @@ def get_qq(data: np.ndarray,
 
     # in some cases the ppf fails to evaluate. It then returns 0, for which
     # it is replaced by the non-gridded theoretical quantiles.
-    mask_q_theo_fail = (q_theo == 0.)
+    mask_q_theo_fail = np.logical_or(q_theo == 0.,
+                                     np.invert(np.isfinite(q_theo)))
     q_good = {'theo': q_theo[~mask_q_theo_fail],
               'sample': q_sample[~mask_q_theo_fail]}
 
@@ -512,6 +513,8 @@ def test_dist(data: np.ndarray,
 
         if fit:
             slope, _, _, _, _ = linregress(x=q['theo'], y=q['sample'])
+            if not np.isfinite(slope):
+                raise ValueError('Fitting failed, slope is not finite.')
 
         if plot:
             if fit:
