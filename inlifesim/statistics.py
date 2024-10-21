@@ -281,7 +281,7 @@ class imb_gen(rv_continuous):
     def _ppf(self, q, *args):
         if self.ppf_spline is None:
             # Generate some points
-            x = np.linspace(-30, 30, 1000)
+            x = np.linspace(-50, 50, 2000)
             if len(np.array(args).shape) != 1:
                 args = args[0][0]
             y = self.cdf(x, args)
