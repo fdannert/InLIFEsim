@@ -535,7 +535,7 @@ def test_dist(data: np.ndarray,
             if fit:
                 ax[1].plot([-lim, lim], [-lim, lim], color=color, ls='-')
                 ax[1].plot([-lim, lim], [-lim / slope, lim / slope],
-                           color='k', alpha=0.5, lw=0.75, ls='--')
+                           color=color_sec, alpha=0.5, lw=0.75, ls='--')
             else:
                 ax[1].plot([-lim, lim], [-lim, lim],
                            color=color_sec, lw=0.75, ls='--')
@@ -545,8 +545,9 @@ def test_dist(data: np.ndarray,
 
             ax[1].set_xlabel('Theoretical quantiles')
             ax[1].set_ylabel('Sample quantiles')
-            ax[1].set_xlim(-lim * 1.1, lim * 1.1)
-            ax[1].set_ylim(-lim * 1.1, lim * 1.1)
+            if np.isfinite(lim):
+                ax[1].set_xlim(-lim * 1.1, lim * 1.1)
+                ax[1].set_ylim(-lim * 1.1, lim * 1.1)
             ax[1].legend()
 
             if fit:
