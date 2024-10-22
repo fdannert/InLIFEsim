@@ -271,10 +271,12 @@ class imb_gen(rv_continuous):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.ppf_spline = None
+
     def _pdf(self, x, *args):
         n = args[0]
-        pdf = ((2 ** (0.5 * (1 - n)) * np.abs(x) ** (0.5 * (n-1))
-                * kv(0.5 * (n - 1), np.abs(x)))
+        pdf = ((2 ** (0.5 * (1 - n)) * np.abs(x * np.sqrt(n)) ** (0.5 * (n-1))
+                * np.sqrt(n)
+                * kv(0.5 * (n - 1), np.abs(x * np.sqrt(n))))
                / (np.sqrt(np.pi) * gamma(n / 2)))
         return pdf
 
