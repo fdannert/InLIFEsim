@@ -275,7 +275,7 @@ class imb_gen(rv_continuous):
         n = args[0]
         pdf = ((2 ** (0.5 * (1 - n)) * np.abs(x) ** (0.5 * (n-1))
                 * kv(0.5 * (n - 1), np.abs(x)))
-               / (np.pi ** (3/2) * gamma(n / 2)))
+               / (np.sqrt(np.pi) * gamma(n / 2)))
         return pdf
 
     def _ppf(self, q, *args):
