@@ -349,7 +349,7 @@ def get_qq(data: np.ndarray,
         raise ValueError('nconv must be specified for mode "imb"')
 
     # data needs to be normalized
-    data /= np.std(data)
+    # data /= np.std(data)
 
     # start with an equally spaced grid of quantiles
     q_theo_native = np.linspace(-siglim, siglim, n_eval)[1:-1]
