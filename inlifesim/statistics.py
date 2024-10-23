@@ -283,7 +283,12 @@ class imb_gen(rv_continuous):
     def _ppf(self, q, *args):
         if self.ppf_spline is None:
             # Generate some points
-            x = np.linspace(-50, 50, 2000)
+            # The PDF is symmetric, so we only evaluate the negative points
+            # this leads to higher precision, as the PDF is small for
+            # negative values.
+            # Evaluate slightly over the 0 point to avoid fitting artifacts
+            # close to 0
+            x = np.linspace(-50, 1, 2000)
             if len(np.array(args).shape) != 1:
                 args = args[0][0]
             y = self.cdf(x, args)
@@ -295,7 +300,10 @@ class imb_gen(rv_continuous):
             self.ppf_spline = Akima1DInterpolator(y, x)
 
         # Evaluate the inverse of the polynomial at the given points
-        return self.ppf_spline(q)
+        ppf_res = np.zeros_like(q)
+        ppf_res[q<0.5] = self.ppf_spline(q[q<0.5])
+        ppf_res[q>0.5] = -self.ppf_spline(1 - q[q>0.5])
+        return ppf_res
 
 
 imb = imb_gen(name='imb', shapes='n')
