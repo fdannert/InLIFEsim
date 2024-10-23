@@ -643,6 +643,7 @@ def get_sigma_lookup(sigma_gauss,
                      N,
                      B_per,
                      n_sigma=1000,
+                     nvonv=11,
                      n_cpu=1,
                      verbose=False,
                      parallel=False):
@@ -684,7 +685,8 @@ def get_sigma_lookup(sigma_gauss,
         T_X = get_samples_lookup(scale_gauss=sigma_gauss,
                                  scale_imb=sigma_imb,
                                  B=B,
-                                 N=N)
+                                 N=N,
+                                 nconv=nconv)
     else:
         with parallel_config(
                 backend="loky",
