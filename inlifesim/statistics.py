@@ -288,7 +288,7 @@ class imb_gen(rv_continuous):
             # negative values.
             # Evaluate slightly over the 0 point to avoid fitting artifacts
             # close to 0
-            x = np.linspace(-50, 1, 2000)
+            x = np.linspace(-30, 1, 2000)
             if len(np.array(args).shape) != 1:
                 args = args[0][0]
             y = self.cdf(x, args)
