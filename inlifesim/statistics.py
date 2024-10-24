@@ -643,7 +643,7 @@ def get_sigma_lookup(sigma_gauss,
                      N,
                      B_per,
                      n_sigma=1000,
-                     nvonv=11,
+                     nconv=11,
                      n_cpu=1,
                      verbose=False,
                      parallel=False):
@@ -701,6 +701,7 @@ def get_sigma_lookup(sigma_gauss,
                 scale_gauss=sigma_gauss,
                 scale_imb=sigma_imb,
                 B=B_per,
+                nconv=nconv,
                 N=N
             ) for _ in range(int(B / B_per)))
 
