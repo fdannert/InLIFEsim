@@ -633,7 +633,7 @@ def get_samples_lookup(scale_gauss: float,
                      scale=scale_imb,
                      n=nconv,
                      size=(B, N - 1)))
-    T_X = s_x / (np.std(X_n, axis=1) * np.sqrt(1 + 1 / (N - 1)))
+    T_X = s_x / np.std(X_n, axis=1)
 
     return T_X
 
