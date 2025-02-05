@@ -558,6 +558,7 @@ def sys_noise_chop(mp_arg) -> dict:
     dn_pol = (flux_star * A**2 * avg_d_pol_2).sum()
     noise_chop["pn_pa"] = np.sqrt(dn_pol * t_total)
 
+
     # calculate fourier components
     # TODO: This still assumes the same PSD for the different input apertures
 

@@ -101,7 +101,6 @@ def planet_response(
 
     return n_planet
 
-
 def planet_signal(
     separation_planet: float,
     dist_star: float,
@@ -179,6 +178,8 @@ def planet_signal(
         phi_rot_start, phi_rot_start + 2 * np.pi, n_sampling_rot
     )
     theta = np.array((-theta * np.cos(phi_rot), theta * np.sin(phi_rot)))
+
+    time_per_bin = t_rot / len(phi_rot)
 
     # create planet signal via Eq (9)
     n_planet = planet_response(

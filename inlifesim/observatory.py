@@ -1,6 +1,5 @@
 from typing import Union
 import multiprocessing as mp
-from copy import deepcopy
 
 import numpy as np
 import pandas as pd
@@ -181,6 +180,7 @@ class Instrument(object):
         get_single_bracewell: bool = False,
         instrumental_source: Union[None, str] = None,
     ):
+      
         self.verbose = verbose
         self.draw_samples = draw_samples
         self.n_draws = n_draws
@@ -200,11 +200,18 @@ class Instrument(object):
         self.wl_bins = wl_bins
         self.wl_bin_widths = wl_bin_widths
         self.image_size = image_size
+        self.n_sampling_rot = n_sampling_rot
+
+        if self.n_sampling_rot % 2 == 0:
+            self.n_sampling_rot += 1
+            if self.verbose:
+                print('Sampling rate was adjusted to be odd')
 
         self.n_cpu = n_cpu
         self.n_sampling_max = n_sampling_max
 
         self.simultaneous_chopping = simultaneous_chopping
+        self.t_int = integration_time
 
         # setting instrument parameters
         # Initialize instrument-specific parameters, such as collector
@@ -303,11 +310,13 @@ class Instrument(object):
             self.d_y_co = 0.64e-3
 
         self.harmonic_number_n_cutoff = {
+
             "a": harmonic_number_approximation(self.d_a_co * self.t_total),
             "phi": harmonic_number_approximation(self.d_phi_co * self.t_total),
             "pol": harmonic_number_approximation(self.d_pol_co * self.t_total),
             "x": harmonic_number_approximation(self.d_x_co * self.t_total),
             "y": harmonic_number_approximation(self.d_y_co * self.t_total),
+
         }
 
         # Initialize source parameters, including stellar (e.g., distance,
@@ -745,6 +754,7 @@ class Instrument(object):
         # prepare variable dictionary to send to multiprocessing workers
         mp_args = []
         for i in range(self.wl_bins.shape[0]):
+
             arg = {
                 "A": self.A,
                 "wl": self.wl_bins[i],
@@ -801,6 +811,7 @@ class Instrument(object):
             else:
                 raise ValueError("Instrumental source not recognized")
             mp_args.append(arg)
+
         if self.n_cpu == 1:
             res = []
             for i in range(self.wl_bins.shape[0]):
@@ -935,9 +946,11 @@ class Instrument(object):
 
         # calculate the PSDs of the perturbation terms
         self.d_a_psd, _, _ = create_pink_psd(
+
             t_total=self.t_total,
             n_sampling_max=int(self.n_sampling_total / 2),
             harmonic_number_n_cutoff=self.harmonic_number_n_cutoff["a"],
+
             rms=d_a_rms,
             num_a=self.num_a,
             n_rot=self.n_rot,
@@ -945,9 +958,11 @@ class Instrument(object):
         )
 
         self.d_phi_psd, _, _ = create_pink_psd(
+
             t_total=self.t_total,
             n_sampling_max=int(self.n_sampling_total / 2),
             harmonic_number_n_cutoff=self.harmonic_number_n_cutoff["phi"],
+
             rms=d_phi_rms,
             num_a=self.num_a,
             n_rot=self.n_rot,
@@ -975,6 +990,7 @@ class Instrument(object):
             "planet_signal": ps,
             "planet_template": self.planet_template_chop,
         }
+
 
         if self.n_cpu == 1:
             params["n_draws"] = self.n_draws
@@ -1162,9 +1178,6 @@ class Instrument(object):
             self.planet_signal_chop,
         ) = planet_signal(
             flux_planet=self.flux_planet,
-            t_exp=self.t_exp,
-            t_total=self.t_total,
-            t_rot=self.t_rot,
             A=self.A,
             phi=self.phi,
             phi_r=self.phi_r,
@@ -1175,6 +1188,7 @@ class Instrument(object):
             simultaneous_chopping=self.simultaneous_chopping,
             separation_planet=self.separation_planet,
             dist_star=self.dist_star,
+            t_int=self.t_int,
         )
 
         if self.verbose:
@@ -1194,7 +1208,7 @@ class Instrument(object):
             A=self.A,
             phi=self.phi,
             num_a=self.num_a,
-            t_int=self.t_total,
+            t_int=self.t_int,
             flux_localzodi=self.flux_localzodi,
             b_star=self.b_star,
             b_ez=self.b_ez,
