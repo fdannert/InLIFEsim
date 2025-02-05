@@ -3,14 +3,20 @@ from os.path import isfile, join
 import itertools
 from copy import deepcopy
 
-import numpy as np
+import matplotlib
 import matplotlib.pyplot as plt
-from cmocean.cm import thermal, balance
+from matplotlib.lines import Line2D
+from cmocean.cm import thermal, thermal_r
+import numpy as np
 from scipy.interpolate import griddata
 from scipy.optimize import curve_fit
 import pickle
 
 from inlifesim.statistics import get_sigma_lookup
+from inlifesim.util import (
+    add_normalized_line_collection,
+    HandlerColorLineCollection,
+)
 
 
 def logistic(x, x0, k, ymin, ymax):
@@ -83,73 +89,95 @@ def get_interest_area(k, rt):
 
 class EvaluateBootstrapping:
     """
-    Class to evaluate the bootstrapping process through logistic fitting
-    and extrapolation. This class is responsible for processing data,
-    performing logistic fitting to the data, and extrapolating fitting
-    parameters for different sigma values. The purpose is to describe the
-    underlying relationship between sigma values using logistic functions.
+    This class provides functionality to evaluate statistical bootstrapping
+    data and methods for plotting, data fitting, and analysis. It processes data
+    generated with a specific bootstrap creation tool, and facilitates tasks like
+    data loading, visualization of raw data, and fitting using logistic functions.
 
-    The class supports various features such as data loading, polynomial
-    fitting, and visualization of fitted parameters and residuals.
+    Its primary purpose is to load and analyze different distributions, perform
+    transformations, and apply logistic regression fitting for further statistical
+    evaluation.
 
-    :ivar verbose: Flag indicating whether verbose output is enabled.
+    :ivar verbose: Indicates whether verbose output is enabled.
     :type verbose: bool
-    :ivar paths: List of paths where the data is stored.
+    :ivar paths: A list of paths to datasets containing bootstrapping data.
     :type paths: list
-    :ivar crit_value: A critical value used for bootstrapping analysis.
-    :type crit_value: float
-    :ivar bootstrap_properties: Dictionary specifying properties related to
-        bootstrapping.
-    :type bootstrap_properties: dict
-    :ivar sigma_gauss: Collection of Gaussian sigma values extracted from the
-        loaded data.
+    :ivar bootstrap_properties: Properties or parameters relevant to the bootstrapping process.
+    :type bootstrap_properties: Any
+    :ivar lookup: Internal dictionary for lookups in processes related to bootstrapping.
+    :type lookup: dict
+    :ivar lookup_X: Internal dictionary for X-coordinate lookups.
+    :type lookup_X: dict
+    :ivar lookup_Y: Internal dictionary for Y-coordinate lookups.
+    :type lookup_Y: dict
+    :ivar crit_value: Stores critical values used for bootstrapping computations.
+    :type crit_value: dict
+    :ivar shape: Stores the shape information of the analyzed distributions.
+    :type shape: dict
+    :ivar sigma_gauss: Gaussian standard deviations for all analyzed datasets.
     :type sigma_gauss: numpy.ndarray
-    :ivar sigma_bessel: Collection of Bessel sigma values extracted from the
-        loaded data.
+    :ivar sigma_bessel: Besselian standard deviations for all analyzed datasets.
     :type sigma_bessel: numpy.ndarray
-    :ivar sigma_want_get: Dictionary mapping (Gaussian sigma, Bessel sigma)
-        pairs to the corresponding analytical and actual sigma data arrays.
+    :ivar sigma_want_get: Dictionary linking Gaussian and Bessel standard deviations
+        to corresponding lookup data.
     :type sigma_want_get: dict
-    :ivar logistic_extrapolation: List of polynomial fitting coefficients for
-        extrapolated logistic parameters.
-    :type logistic_extrapolation: list
     """
 
-    def __init__(self, verbose, paths, crit_value, bootstrap_properties):
+    def __init__(self, verbose, paths, bootstrap_properties):
         """
-        Initializes a new instance of the class.
+        This class provides functionalities for initializing and handling data needed
+        to create bootstrapping structures. It manages input properties, file paths,
+        and storage for additional computed data structures.
 
-        This constructor initializes the class with the given parameters and sets up
-        the necessary attributes. The ``paths`` parameter is used to load data when
-        initializing the object. The ``bootstrap_properties`` are set for any bootstrap-related
-        functionalities that may be used later. The parameter ``crit_value`` initializes a
-        threshold for critical operations or comparisons. Verbose option helps in controlling
-        detailed output representation if implemented elsewhere.
+        Attributes
+        ----------
+        verbose : bool
+            A boolean indicating whether to display verbose output during processing.
+        paths : str
+            A string denoting the path to the input data for processing.
+        bootstrap_properties : dict
+            A dictionary containing the configuration properties for bootstrapping.
+        lookup : dict
+            A dictionary initialized to store lookup structures for data transformation.
+        lookup_X : dict
+            A dictionary initialized to store additional lookup structures for the
+            independent variables or data attributes.
+        lookup_Y : dict
+            A dictionary initialized to store additional lookup structures for the
+            dependent variables or target attributes.
+        crit_value : dict
+            A dictionary initialized to store any critical values derived during
+            bootstrapping computations.
+        shape : dict
+            A dictionary initialized to store shape or dimensionality details of
+            processed data.
 
-        :param verbose: Determines whether to enable verbose mode for output representation.
-        :type verbose: bool
-        :param paths: List or location of file paths to load data from.
-        :type paths: Any
-        :param crit_value: Critical threshold value for comparison or evaluation.
-        :type crit_value: float | int
-        :param bootstrap_properties: Configuration or properties to initialize bootstrap-related behavior.
-        :type bootstrap_properties: dict
+        Methods
+        -------
+        __init__(verbose, paths, bootstrap_properties)
+            Initializes the class instance with specified verbosity, file paths,
+            and bootstrap properties, and prepares internal data structures.
         """
         self.verbose = verbose
         self.paths = paths
         self.load_data(paths)
-        self.crit_value = crit_value
         self.bootstrap_properties = bootstrap_properties
+
+        self.lookup = {}
+        self.lookup_X = {}
+        self.lookup_Y = {}
+        self.crit_value = {}
+        self.shape = {}
+
+        # todo: create the CreateBootstrappingData class
 
     def load_data(self, paths: list):
         """
-        Loads data from specified paths, processes numerical values from filenames and
-        loads corresponding numpy arrays. The method combines the loaded data into
-        shared attributes for further use.
-
-        :param paths: A list of file directory paths where data files are located.
-        :type paths: list
-        :return: None. The processed data is stored in the instance attributes.
+        Load the data from a dataset created with CreateBootstrappingData
+        Parameters
+        ----------
+        path: str
+            The path to the dataset
         """
         sigma_gauss = []
         sigma_bessel = []
@@ -190,32 +218,107 @@ class EvaluateBootstrapping:
             itertools.chain.from_iterable(d.items() for d in sigmas_want_get)
         )
 
+    def plot_raw_data(self, figsize=(240 / 72, 180 / 72)):
+        """
+        Plots raw data depicting various sigma values and their relationships, visualized
+        using color-coded lines with a thermal colormap. The function uses customizable
+        figure size and includes a supplementary colorbar to represent sigma ratio labels.
+
+        The plot presents the relationships among sigma values, specified as ratios,
+        and encodes these through proper labeled lines and a visually aligned colorbar.
+        A dashed reference line is included for comparative purposes, and axes are labeled
+        to indicate their respective metrics. This visualization is primarily for analyzing
+        and comparing sigma values and their derived ratios.
+
+        :param figsize: Figure size specified as a tuple (width, height).
+        :type figsize: tuple
+        :return: Matplotlib figure and axis objects representing the constructed plot.
+        :rtype: tuple
+        """
+        fig, ax = plt.subplots(figsize=figsize, dpi=200)
+
+        # extract N colors from the thermal colormap
+        colors = thermal(np.linspace(0, 0.85, len(self.sigma_gauss)))
+
+        for sg, si, c in zip(self.sigma_gauss, self.sigma_bessel, colors):
+            if np.log10(si / sg) == -np.inf:
+                label = "0"
+            elif np.log10(si / sg) == np.inf:
+                label = "$\infty$"
+            elif int(np.log10(si / sg)) == 0 and np.log10(si / sg) < 0:
+                label = f"{np.round(si / sg, 2)}"
+            elif int(np.log10(si / sg)) == 0 and np.log10(si / sg) >= 0:
+                label = f"{int(np.round(si / sg, 0))}"
+            else:
+                label = f"$10^{{{int(np.log10(si / sg))}}}$"
+            ax.plot(
+                self.sigma_want_get[(sg, si)][1],
+                self.sigma_want_get[(sg, si)][0],
+                # format the labels in scientific notation
+                #    label=label,
+                color=c,
+            )
+
+        ax.plot(
+            self.sigma_want_get[(self.sigma_gauss[1], self.sigma_bessel[1])][0],
+            self.sigma_want_get[(self.sigma_gauss[1], self.sigma_bessel[1])][0],
+            color="lightgray",
+            ls="--",
+            alpha=1,
+        )
+
+        # in the bottom left of the plot, I want a small colorbar replacing the labels of the individual lines
+        cbar_ax = fig.add_axes([0.55, 0.22, 0.3, 0.03])
+        cbar = matplotlib.colorbar.ColorbarBase(
+            ax=cbar_ax, cmap=thermal, orientation="horizontal"
+        )
+
+        cbar_ax.set_xlim(0, 0.85)
+
+        # make the ticks of the colorbar appear on the top
+
+        # cbar_ax.xaxis.set_ticks_position('top')
+
+        pos_ticks = list(
+            np.array([0, 7, 14]) / (len(self.sigma_gauss) - 1) * 0.85
+        )
+        ticks = ["0", "1", r"$\infty$"]
+
+        # add a label of the colorbar to the right of the colorbar
+        cbar.set_label(r"$\sigma_{\mathrm{IMB}} / \sigma_{\mathcal{N}}$")
+        # make the label appear on top of the colorbar
+        cbar_ax.xaxis.set_label_position("top")
+
+        cbar.set_ticks(pos_ticks)
+        cbar.set_ticklabels(ticks)
+
+        # vertical line at 5
+        # ax.axvline(5, color='k', ls='--', alpha=0.5)
+
+        # plt.legend(fontsize=10, title=r'$\sigma_{\mathrm{IMB}} / \sigma_{\mathrm{Gauss}}$-ratio')
+
+        ax.set_xlabel(r"$T_\alpha$")
+        ax.set_ylabel(r"$T_\mathcal{N}$")
+
+        # fig.savefig('sigma_lookup_samples.pdf', bbox_inches='tight')
+        return fig, ax
+
     def fit_logistic(
         self, sig_actual, plot=False, guess=None, bounds=(-np.inf, np.inf)
     ):
         """
-        Fits a logistic model to the relationship between actual Gaussian noise and the
-        Bessel-Gaussian noise ratios. The method uses a logistic function to interpret
-        the trend between a logarithmic transformation of the noise ratio and the
-        analytical estimation of noise. It optionally plots the data, the logistic fit,
-        and residuals for visualization.
+        Perform a logistic curve fitting based on given actual sigma values and pre-calculated
+        sigma Bessel and Gauss ratios. This method utilizes interpolation coupled with
+        `scipy.optimize.curve_fit` to calculate the logistic fit parameters, optionally displaying
+        visualized fitting and residual plots.
 
-        :param sig_actual: The actual noise levels to estimate against, expressed as
-                           a sequence of numerical values.
-        :type sig_actual: list or numpy.ndarray
-        :param plot: A boolean flag indicating whether to generate a plot showing
-                     the fitted curve, data points, and residuals. Defaults to False.
-        :type plot: bool
-        :param guess: An optional parameter for providing an initial guess for the
-                      logistic curve fitting parameters. Defaults to None.
-        :type guess: list or tuple or None
-        :param bounds: Bounds for the logistic curve fitting parameters, expressed
-                       as a tuple with lower and upper bounds. Defaults to
-                       (-numpy.inf, numpy.inf).
-        :type bounds: tuple
-        :return: Returns the optimized logistic model parameters as obtained by
-                 the curve fitting process.
-        :rtype: tuple
+        :param sig_actual: An array or list of actual sigma values to be used as the fitting reference.
+        :param plot: A boolean indicating whether to display a plot of the fitting process and residuals.
+        :param guess: Initial guess for the logistic parameters, provided as an array or list.
+        :param bounds: Bounds for the parameters in the logistic fit, given as a tuple with shape
+            (lower_bounds, upper_bounds).
+        :return: A list containing the optimized parameters of the logistic function as obtained
+            from the curve fitting process.
         """
         sig_analytical = []
         rat_bes_gaus = []
@@ -293,33 +396,33 @@ class EvaluateBootstrapping:
         make_n_plots: int = 10,
         initial_guess=None,
         bounds=(-np.inf, np.inf),
+        update_guess=True,
     ):
         """
-        Performs a logistic fitting operation across a range of values for sigma_actual_shape,
-        splitting the operation into `make_n_plots` segments for plotting if specified. This
-        method attempts to fit logistic functions to simulated data using an optimization
-        process. If plotting is enabled, plots are generated at specified intervals as the
-        fits progress. The resulting fitted parameters for each sigma value are collected
-        and returned as an array.
+        Performs logistic fitting on the provided sigma values based on the specified
+        shape range and fitting parameters. Each sigma value in the provided range
+        is evaluated using a logistic fitting function. The fitting process can be
+        either visualized or executed silently depending on the `make_n_plots` and
+        `verbose` arguments. The initial guess and bounds can be updated dynamically
+        through the fitting process.
 
-        :param sigma_actual_shape: Specifies the range of sigma values as a tuple of floating
-            point numbers. The tuple should represent the range (min, max, step) of the
-            sigma values to simulate.
-        :type sigma_actual_shape: tuple
-        :param make_n_plots: The number of equally spaced plotting segments. Determines how
-            often plots are generated during the logistic fitting process. Defaults to 10.
-        :type make_n_plots: int
-        :param initial_guess: Initial guess for the optimization process. If None, the
-            optimizer will attempt to infer a suitable initial condition. Defaults to None.
-            Its structure typically depends on the specific logistic fitting function details.
-        :type initial_guess: Optional[Any]
-        :param bounds: Tuple specifying the lower and upper bounds for the parameters during
-            optimization. Defaults to a range of (-np.inf, np.inf).
-        :type bounds: tuple
-        :return: A tuple containing the sigma_actual array (generated based on the provided
-            sigma_actual_shape) and an array of fitted parameters for each sigma value. If a
-            fit operation fails, NaN values are populated in the results.
-        :rtype: tuple[np.ndarray, np.ndarray]
+        :param sigma_actual_shape: A tuple specifying the range (start, stop, step)
+            for generating the sigma values to be evaluated.
+        :param make_n_plots: An integer defining how many fitting processes should
+            include plots for visualization during the iterations. Defaults to 10.
+        :param initial_guess: Optional initial parameters for the logistic fitting.
+            If not provided, defaults to None, and the algorithm employs the most
+            recent values dynamically.
+        :param bounds: Specifies the bounds for the logistic fitting parameters
+            as a tuple. Defaults to (-inf, inf).
+        :param update_guess: A boolean flag indicating whether to dynamically
+            update the guessing parameters for the next iteration, based on the
+            previous result. Defaults to True.
+        :return: A tuple containing:
+            - `sig_actual` (numpy.ndarray): The generated sigma values in the range
+              specified by `sigma_actual_shape`.
+            - `fit_values` (numpy.ndarray): An array containing the logistic fit
+              parameters for each value in `sig_actual`.
         """
         sig_actual = np.linspace(*sigma_actual_shape)
         fit_values = []
@@ -327,10 +430,10 @@ class EvaluateBootstrapping:
         plot_every_n = len(sig_actual) // make_n_plots
 
         for i, sa in enumerate(sig_actual):
-            if i == 0:
-                guess = initial_guess
-            else:
+            if (i != 0) and update_guess and (fit_values[-1][0] > 0):
                 guess = fit_values[-1]
+            else:
+                guess = initial_guess
 
             try:
                 if (i % plot_every_n == 0) and self.verbose:
@@ -360,17 +463,25 @@ class EvaluateBootstrapping:
         make_n_plots: int = 10,
     ):
         """
-        Extrapolates the logistic fit parameters using a polynomial fit based on the given
-        actual sigma shape and specified ranges. This method processes logistic parameters,
-        fits polynomial curves to the data within specified ranges, and optionally visualizes
-        the fits for each parameter.
+        Extrapolates logistic distribution fitting parameters by performing a second-order polynomial
+        fit on the parameters over a specified range. This method refines logistic fit parameters
+        to allow extrapolation over the range of actual sigma values. Polynomial fits are performed
+        for each parameter, and optional visualization of the fits is provided.
 
-        :param sigma_actual_shape: Actual shape of the sigma values to be used in the extrapolation process.
-        :param start_fit_at_sigma: List containing the start points of sigma values for fitting each parameter.
-        :param end_fit_at_sigma: List containing the end points of sigma values for fitting each parameter.
-        :param polynomial_order: List specifying the polynomial order to be used for fitting each logistic parameter.
-        :param make_n_plots: Number of plots to generate for visualizing the polynomial fit. Defaults to 10.
-        :return: None
+        :param sigma_actual_shape: Shape of the actual sigma values; determines the structure of
+            the logistic fit input.
+        :param start_fit_at_sigma: List of sigma values indicating the start of the range used for
+            fitting each parameter.
+        :param end_fit_at_sigma: List of sigma values indicating the end of the range used for fitting
+            each parameter.
+        :param polynomial_order: List of polynomial orders to be used for the fit of each parameter.
+            Each order corresponds to the fitting performed for each parameter (e.g., for
+            `center`, `steepness`, `min`, and `max`).
+        :param make_n_plots: Optional number of plots to generate for visualizing the polynomial
+            fit results for each parameter (default is 10).
+        :return: Computes and stores the polynomial coefficients for each logistic parameter
+            in `self.logistic_extrapolation`. Optionally generates a visualization if `self.verbose`
+            is True.
         """
         sig_actual, fit_values = self.do_logistic_fit(
             sigma_actual_shape=sigma_actual_shape, make_n_plots=make_n_plots
@@ -447,16 +558,21 @@ class EvaluateBootstrapping:
             plt.tight_layout()
             plt.show()
 
-    def plot_extrapolation(self, sigma_actual_shape: tuple):
+    def plot_extrapolation(
+        self, sigma_actual_shape: tuple, figsize: tuple = (3.55, 1.5)
+    ):
         """
-        Generates and plots the extrapolation of analytical sigma values based on provided
-        parameters and the logistic function. The function computes a series of extrapolated
-        values using the logistic function fitted with parameters from predictions, and it
-        visually compares these against the actual data.
+        Generates a plot for the extrapolated relation between measured sigmas
+        and their corresponding analytical values using logistic extrapolation.
+        The function also includes the ability to visualize the measured relations
+        as well as a colorbar denoting the ratio of sigmas. This graphical
+        representation is useful for understanding and analyzing the trends
+        and relations within the dataset.
 
-        :param sigma_actual_shape: A tuple specifying the range and number of points for
-            actual sigma values. This parameter is used to create the `np.linspace` of sigma
-            values used in the plot.
+        :param sigma_actual_shape: A tuple specifying the start, stop, and
+            number of points for generating sigma_actual values for extrapolation.
+        :param figsize: A tuple defining the size of the figure. Defaults to
+            (3.55, 1.5).
         :return: None
         """
         sigma_ratios = deepcopy((self.sigma_bessel / self.sigma_gauss)[:-1])
@@ -481,12 +597,18 @@ class EvaluateBootstrapping:
 
         sigma_analytical = np.array(sigma_analytical)
 
-        fig, ax = plt.subplots()
+        fig, ax = plt.subplots(figsize=figsize, dpi=200)
 
         # extract N colors from the thermal colormap
         colors = thermal(np.linspace(0, 0.85, len(sigma_ratios)))
 
-        for sg, si in zip(self.sigma_gauss, self.sigma_bessel):
+        sel = True
+        for sg, si, c in zip(self.sigma_gauss, self.sigma_bessel, colors):
+            if sel == False:
+                label = None
+            else:
+                label = "Measured Relation"
+                sel = False
             ax.plot(
                 self.sigma_want_get[(sg, si)][1],
                 self.sigma_want_get[(sg, si)][0],
@@ -498,11 +620,69 @@ class EvaluateBootstrapping:
                 sigma_analytical[i],
                 sigma_actual,
                 # format the labels in scientific notation
-                label=f"${sigma_ratios[i]:.2e}$",
+                # label=f'${sigma_ratios[i]:.2e}$',
                 color=c,
             )
 
-        ax.legend(fontsize=5)
+        # --- COLORBAR ---
+        cbar_ax = fig.add_axes([0.55, 0.22, 0.3, 0.03])
+        cbar = matplotlib.colorbar.ColorbarBase(
+            ax=cbar_ax, cmap=thermal, orientation="horizontal"
+        )
+
+        cbar_ax.set_xlim(0, 0.85)
+
+        # make the ticks of the colorbar appear on the top
+
+        # cbar_ax.xaxis.set_ticks_position('top')
+
+        pos_ticks = list(
+            np.array([0, 7, 14]) / (len(self.sigma_gauss) - 1) * 0.85
+        )
+        ticks = ["0", "1", r"$\infty$"]
+
+        # add a label of the colorbar to the right of the colorbar
+        cbar.set_label(r"$\sigma_{\mathrm{IMB}} / \sigma_{\mathrm{Gauss}}$")
+        # make the label appear on top of the colorbar
+        cbar_ax.xaxis.set_label_position("top")
+
+        cbar.set_ticks(pos_ticks)
+        cbar.set_ticklabels(ticks)
+
+        # --- LEGEND ---
+
+        # Create color lines for legend
+        color_line = add_normalized_line_collection(
+            ax, cmap=thermal, linewidth=4
+        )
+        gray_line = Line2D([0], [0], color="gray", lw=2)
+
+        # Existing legend handles and labels
+        handles = []
+        labels = []
+
+        handles.append(color_line)
+        labels.append("Extrapolated Relation")
+
+        handles.append(gray_line)
+        labels.append("Measured Relation")
+
+        ax.legend(
+            handles,
+            labels,
+            handler_map={
+                color_line: HandlerColorLineCollection(
+                    cmap=thermal, numpoints=len(sigma_ratios)
+                )
+            },
+            loc="upper left",
+            frameon=True,
+            fontsize=8,
+        )
+
+        ax.set_xlabel(r"$T_\alpha$")
+        ax.set_ylabel(r"$T_\mathcal{N}$")
+        # fig.savefig('sigma_lookup_extrapolation.pdf', bbox_inches='tight')
         plt.show()
 
     def interpolate_to_grid(
@@ -513,26 +693,30 @@ class EvaluateBootstrapping:
         fill_nan: bool = True,
     ):
         """
-        Interpolates the provided data points onto a grid defined by the specified
-        analytical and ratio ranges for sigma. The interpolation can utilize nearest
-        neighbor or linear methods. Missing values (`NaN`) can optionally be handled and
-        filled by vertically propagating non-`NaN` values up and down along the grid.
+        Interpolates the provided data points to a regularly spaced 2D grid using the given
+        shape parameters for both axes. Optionally handles missing values (NaNs) in the
+        output grid by filling them using linear approximation and copying valid values
+        vertically to ensure data continuity.
 
-        :param points: The input array containing data points to interpolate. Assumes
-            the shape is (n, 3), where the first two columns represent x and y
-            coordinates, and the third column contains the corresponding values.
-        :type points: np.ndarray
-        :param sigma_analytical_shape: A tuple representing the range and number of
-            grid points for the analytical sigma axis. Default is (0, 8, 100).
-        :param sigma_ratio_shape: A tuple specifying the logarithmic range and number
-            of grid points for the sigma ratio axis. Default is
-            (np.log10(6e-2), np.log10(5), 100).
-        :param fill_nan: A boolean flag deciding whether missing (`NaN`) values in the
-            interpolated result are to be filled. Default is True.
-        :return: A tuple containing the interpolated grid, an array of x-coordinates,
-            and an array of y-coordinates. The interpolated grid has the same number
-            of points specified in the sigma analytical and ratio shape parameters.
-        :rtype: Tuple[np.ndarray, np.ndarray, np.ndarray]
+        :param points: The input data points to interpolate. Expected to be a 2D array
+            with shape (n, 3), where the first two columns represent the coordinates
+            and the third column represents the corresponding data values.
+        :type points: numpy.ndarray
+        :param sigma_analytical_shape: A tuple containing the range for the first axis
+            (start, stop, number of points).
+        :type sigma_analytical_shape: tuple
+        :param sigma_ratio_shape: A tuple containing the base-10 logarithmic range for the
+            second axis (log_start, log_stop, number of points).
+        :type sigma_ratio_shape: tuple
+        :param fill_nan: A boolean flag indicating whether to handle and fill NaN values
+            in the resultant grid by vertical propagation. Defaults to True.
+        :type fill_nan: bool
+        :return: Returns a tuple containing:
+
+            - interp (numpy.ndarray): The interpolated 2D grid data.
+            - X (numpy.ndarray): The meshgrid for the first axis.
+            - Y (numpy.ndarray): The meshgrid for the second axis.
+        :rtype: tuple
         """
         X, Y = np.meshgrid(
             np.linspace(*sigma_analytical_shape),
@@ -576,37 +760,47 @@ class EvaluateBootstrapping:
         sigma_analytical_shape: tuple,
         sigma_ratio_shape: tuple,
         n_analytical: int,
+        table_name: str,
+        crit_value: float,
+        initial_guess: list = [0, 10, 0.1, 0.11],
         make_n_plots: int = 10,
+        update_guess=True,
     ):
         """
-        Creates a lookup table for interpolating between analytical and actual sigma
-        values, based on logistic fit of the relationship. This process involves
-        fitting a logistic function to the given sigma values, generating analytical
-        values, ratios, and generating the lookup table using gridded interpolation.
-        Also includes optional visualization of intermediate and final results.
+        Generates a lookup table by performing logistic fitting on the actual
+        and analytical shapes of a dataset, interpolates results to grid points,
+        and plots various visualizations if verbose mode is enabled.
 
-        :param sigma_actual_shape: Tuple defining the shape or range of actual sigma
-            values for the lookup process.
-        :type sigma_actual_shape: tuple
-        :param sigma_analytical_shape: Tuple defining the shape or range of
-            analytical sigma values to be used in the grid interpolation.
-        :type sigma_analytical_shape: tuple
-        :param sigma_ratio_shape: Tuple defining the shape or range of the sigma
-            ratios to be used in the grid interpolation.
-        :type sigma_ratio_shape: tuple
-        :param n_analytical: Number of points to be generated for the analytical
-            sigma values during interpolation.
-        :type n_analytical: int
-        :param make_n_plots: Optional number of diagnostic plots to generate for
-            visualizing the fitting process and results. Defaults to 10.
-        :type make_n_plots: int, optional
-        :return: None
+        :param sigma_actual_shape: Tuple specifying the shape of the actual
+            sigma space for grid generation.
+        :param sigma_analytical_shape: Tuple specifying the shape of the analytical
+            sigma space for the grid.
+        :param sigma_ratio_shape: Tuple defining the shape for the ratio
+            of sigma spaces in the grid interpolation.
+        :param n_analytical: Number of analytical points used in calculating
+            sigma values.
+        :param table_name: Name of the table being created for lookup and reference.
+        :param crit_value: Critical value parameter for setting thresholds
+            in the lookup table.
+        :param initial_guess: List of initial guesses for parameters used
+            in the logistic fitting process. Defaults to [0, 10, 0.1, 0.11].
+        :param make_n_plots: Number of plots generated for visualization
+            during the logistic fitting process. Defaults to 10.
+        :param update_guess: Boolean flag indicating whether to update the
+            initial_guess during the logistic fitting process. Defaults to True.
+        :return: None.
         """
+        self.crit_value[table_name] = crit_value
+
         sigma_actual, fit_values = self.do_logistic_fit(
             sigma_actual_shape=sigma_actual_shape,
             make_n_plots=make_n_plots,
-            initial_guess=[0, 10, 0.1, 0.11],
-            bounds=([-np.inf, 0, 0, 0], [np.inf, 20, np.inf, np.inf]),
+            initial_guess=initial_guess,
+            bounds=(
+                [-np.inf, 0, 0, 0],
+                [np.inf, 20, np.inf, np.inf],
+            ),
+            update_guess=update_guess,
         )
 
         if self.verbose:
@@ -710,13 +904,21 @@ class EvaluateBootstrapping:
         )
         points = points[~np.isnan(points).any(axis=1)]
 
-        self.lookup_ratio, X, Y = self.interpolate_to_grid(
+        self.lookup[table_name + "_ratio"], X, Y = self.interpolate_to_grid(
             points=points_ratio,
             sigma_analytical_shape=sigma_analytical_shape,
             sigma_ratio_shape=sigma_ratio_shape,
             fill_nan=False,
         )
-        self.lookup, self.lookup_X, self.lookup_Y = self.interpolate_to_grid(
+
+        self.shape[table_name + "_ta"] = sigma_actual_shape
+        self.shape[table_name + "_sr"] = sigma_ratio_shape
+
+        (
+            self.lookup[table_name],
+            self.lookup_X[table_name],
+            self.lookup_Y[table_name],
+        ) = self.interpolate_to_grid(
             points=points,
             sigma_analytical_shape=sigma_analytical_shape,
             sigma_ratio_shape=sigma_ratio_shape,
@@ -727,7 +929,7 @@ class EvaluateBootstrapping:
             fig, ax = plt.subplots()
 
             plt.imshow(
-                self.lookup_ratio,
+                self.lookup[table_name + "_ratio"],
                 origin="lower",
                 cmap=thermal,
                 extent=(
@@ -744,7 +946,7 @@ class EvaluateBootstrapping:
             plt.contour(
                 X,
                 np.log10(Y),
-                self.lookup_ratio,
+                self.lookup[table_name + "_ratio"],
                 levels=[0.8, 0.85, 0.9, 0.95, 1, 1.05],
                 # levels=[1, 2, 3, 4, 5, 6, 7, 8],
                 colors="w",
@@ -793,20 +995,20 @@ class EvaluateBootstrapping:
         sigma_analytical_shape: tuple,
     ):
         """
-        Create an extrapolated lookup table based on the provided sigma parameters.
+        Creates an extrapolated lookup table based on given sigma value shapes.
 
-        This method uses logistic fits and interpolation to compute an extrapolated
-        lookup table for given shapes of sigma_actual, sigma_ratio, and sigma_analytical.
-        The process involves evaluating logistic functions and projecting the output
-        onto specified grids. Additionally, visualizations can be generated to inspect
-        the results when verbose mode is enabled.
+        This method computes and interpolates the sigma actual, sigma ratio, and
+        sigma analytical values into lookup tables. It uses logistic functions and
+        other calculations to build data grids for performing extrapolation and
+        evaluation. The results are stored in the object's lookup dictionary, and
+        visualization can optionally display the extrapolated data.
 
-        :param sigma_actual_shape: A tuple defining the shape parameters to create a
-            linear space for sigma_actual.
-        :param sigma_ratio_shape: A tuple defining the shape parameters to create a
-            logarithmic space for sigma_ratio.
-        :param sigma_analytical_shape: A tuple defining the shape of the sigma_analytical
-            grid for interpolation.
+        :param sigma_actual_shape: Tuple specifying the shape and range of sigma_actual
+            values, used for linspace generation.
+        :param sigma_ratio_shape: Tuple specifying the shape and range of sigma_ratio
+            values, used for logspace generation.
+        :param sigma_analytical_shape: Tuple specifying the shape and range of
+            sigma_analytical values for grid interpolation.
         :return: None
         """
         sigma_actual = np.linspace(*sigma_actual_shape)
@@ -825,9 +1027,9 @@ class EvaluateBootstrapping:
         SAna = logistic(np.log10(SR.flatten()), x0, k, ymin, ymax)
 
         (
-            self.lookup_extrapolation,
-            self.logistic_extrapolation_X,
-            self.lookup_extrapolation_Y,
+            self.lookup["extrapolation"],
+            self.lookup_X["extrapolation"],
+            self.lookup_Y["extrapolation"],
         ) = self.interpolate_to_grid(
             points=np.array((SAna, SR.flatten(), SAct.flatten())).T,
             sigma_analytical_shape=sigma_analytical_shape,
@@ -835,14 +1037,16 @@ class EvaluateBootstrapping:
             fill_nan=False,
         )
 
-        if self.verbose:
-            lookup_extrapolation_ratio, _, _ = self.interpolate_to_grid(
-                points=np.array((SAna, SR.flatten(), SAct.flatten() / SAna)).T,
-                sigma_analytical_shape=sigma_analytical_shape,
-                sigma_ratio_shape=sigma_ratio_shape,
-                fill_nan=False,
-            )
+        lookup_extrapolation_ratio, _, _ = self.interpolate_to_grid(
+            points=np.array((SAna, SR.flatten(), SAct.flatten() / SAna)).T,
+            sigma_analytical_shape=sigma_analytical_shape,
+            sigma_ratio_shape=sigma_ratio_shape,
+            fill_nan=False,
+        )
 
+        self.lookup["extrapolation_ratio"] = lookup_extrapolation_ratio
+
+        if self.verbose:
             fig, ax = plt.subplots()
             plt.imshow(
                 lookup_extrapolation_ratio,
@@ -856,55 +1060,125 @@ class EvaluateBootstrapping:
                 ),
                 aspect="auto",
             )
+            plt.colorbar()
 
             plt.contour(
-                self.logistic_extrapolation_X,
-                np.log10(self.lookup_extrapolation_Y),
+                self.lookup_X["extrapolation"],
+                np.log10(self.lookup_Y["extrapolation"]),
                 lookup_extrapolation_ratio,
                 levels=[0.8, 0.85, 0.9, 0.95, 1, 1.05],
                 # levels=[5, 10, 15, 20, 25],
                 colors="w",
                 linewidths=1,
             )
-            plt.colorbar()
+
+            plt.xlabel(r"$\sigma_{\mathcal{N}, \mathrm{analytical}}$")
+            plt.ylabel(r"$\log(\sigma_{\mathcal{B} / \sigma_{\mathcal{N}}})$")
+
             plt.show()
+
+    def plot_combined_lookup(
+        self,
+        figsize=(3.55, 3),
+    ):
+        """
+        Plots a combined lookup visualization using various pre-computed lookup tables and custom
+        styling. Multiple lookup tables are aggregated into one cohesive plot with axes labels,
+        colorbars, and tick formatting for intuitive presentation. The method utilizes deep copies
+        of data arrays and selects subsets of the lookup tables based on critical values provided.
+
+        :param figsize: Tuple specifying the figure size for the plot.
+        :type figsize: tuple
+        :return: None
+        """
+        fig, ax = plt.subplots(figsize=(3.55, 3), dpi=200)
+
+        ax.imshow(
+            self.lookup["small_ratio"],
+            cmap=thermal_r,
+            origin="lower",
+            extent=(0.07, 0.25, -1, 0.75),
+            aspect="auto",
+            vmin=0.66,
+            vmax=1.0,
+        )
+        im = ax.imshow(
+            self.lookup["extrapolation_ratio"],
+            cmap=thermal_r,
+            origin="lower",
+            extent=(5, 30, -1, 0.75),
+            aspect="auto",
+            vmin=0.66,
+            vmax=1.0,
+        )
+
+        cbar = plt.colorbar(im, ax=ax)
+        cbar.set_label(r"$T_\alpha / T_\mathcal{N}$")
+
+        # ax.imshow(self.lookup['large_ratio'], cmap=thermal, origin='lower', extent=(0.2, 7, -1, 0.75), aspect='auto', vmin=0.66, vmax=1.0)
+
+        large_ratio = deepcopy(self.lookup["large_ratio"])
+        ts_alpha = np.linspace(
+            self.shape["large_ta"][0],
+            self.shape["large_ta"][1],
+            large_ratio.shape[0],
+        )
+        idx = {
+            "large": np.argmin(np.abs(ts_alpha - self.crit_value["large"])),
+            "small": np.argmin(np.abs(ts_alpha - self.crit_value["small"])),
+        }
+
+        idx["large_co"] = ts_alpha[idx["large"]]
+        idx["small_co"] = ts_alpha[idx["small"]]
+
+        large_ratio = large_ratio[:, idx["small"] : idx["large"]]
+
+        ax.imshow(
+            large_ratio,
+            cmap=thermal_r,
+            origin="lower",
+            extent=(idx["small_co"], idx["large_co"], -1, 0.75),
+            aspect="auto",
+            vmin=0.66,
+            vmax=1.0,
+        )
+
+        ax.set_xlim(0.07, 30)
+
+        yticks = np.log10(np.array([3e-1, 1, 3]))
+        ytick_labels = [r"$3\cdot10^{-1}$", r"$10^{0}$", r"$3\cdot10^{0}$"]
+        ax.set_yticks(yticks, ytick_labels)
+
+        ax.set_ylabel(r"$\sigma_\mathrm{IMB} / \sigma_\mathrm{Gauss}$")
+        ax.set_xlabel(r"$T_\mathcal{N}$")
+
+        plt.show()
 
     def save_lookup(self, path: str):
         """
-        Saves the lookup data to the specified file path. The method serializes a
-        dictionary containing data paths, bootstrap properties, lookup tables, and
-        fit parameters into a pickle file.
+        Saves the lookup table data along with critical values, bootstrap properties,
+        and logistic extrapolation parameters to the specified file path in binary
+        format using Python's pickle module.
 
-        The resulting serialized data structure includes:
-        - Critical value for lookup.
-        - Data paths and bootstrap properties.
-        - Lookup tables with corresponding coordinates and extrapolation data.
-        - Fit parameters for logistic extrapolation.
+        The saved data includes the following:
+        - Critical value used for analysis.
+        - Paths related to the data.
+        - Bootstrap properties for the system.
+        - Lookup table attributes including its values and coordinate details.
+        - Fit parameters derived from logistic extrapolation.
 
-        :param path: The file path where the serialized lookup data will be stored.
-                     The data is written as a binary file.
+        :param path: The file path where the data will be saved in binary format.
         :type path: str
-
         :return: None
         """
         self.result = {
-            "critical_value": 6,
+            "critical_value": self.crit_value,
             "data_path": self.paths,
             "bootstrap_properties": self.bootstrap_properties,
             "lookup_table": {
                 "table": self.lookup,
                 "X": self.lookup_X,
                 "Y": self.lookup_Y,
-                "coords": {
-                    "X": "sigma_analytical",
-                    "Y": "sigma_ratio",
-                    "Z": "sigma_actual",
-                },
-            },
-            "lookup_table_extrapolation": {
-                "table": self.lookup_extrapolation,
-                "X": self.logistic_extrapolation_X,
-                "Y": self.lookup_extrapolation_Y,
                 "coords": {
                     "X": "sigma_analytical",
                     "Y": "sigma_ratio",
