@@ -202,11 +202,6 @@ class Instrument(object):
         self.wl_bin_widths = wl_bin_widths
         self.image_size = image_size
 
-        if self.n_sampling_rot % 2 == 0:
-            self.n_sampling_rot += 1
-            if self.verbose:
-                print('Sampling rate was adjusted to be odd')
-
         self.n_cpu = n_cpu
         self.n_sampling_max = n_sampling_max
 
@@ -1176,6 +1171,9 @@ class Instrument(object):
             self.planet_signal_chop,
         ) = planet_signal(
             flux_planet=self.flux_planet,
+            t_exp=self.t_exp,
+            t_total=self.t_total,
+            t_rot=self.t_rot,
             A=self.A,
             phi=self.phi,
             phi_r=self.phi_r,
@@ -1186,7 +1184,6 @@ class Instrument(object):
             simultaneous_chopping=self.simultaneous_chopping,
             separation_planet=self.separation_planet,
             dist_star=self.dist_star,
-            t_int=self.t_int,
         )
 
         if self.verbose:
@@ -1206,7 +1203,7 @@ class Instrument(object):
             A=self.A,
             phi=self.phi,
             num_a=self.num_a,
-            t_int=self.t_int,
+            t_int=self.t_total,
             flux_localzodi=self.flux_localzodi,
             b_star=self.b_star,
             b_ez=self.b_ez,

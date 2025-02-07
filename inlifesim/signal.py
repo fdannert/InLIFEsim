@@ -179,8 +179,6 @@ def planet_signal(
     )
     theta = np.array((-theta * np.cos(phi_rot), theta * np.sin(phi_rot)))
 
-    time_per_bin = t_rot / len(phi_rot)
-
     # create planet signal via Eq (9)
     n_planet = planet_response(
         flux_planet=flux_planet,
