@@ -1,5 +1,6 @@
 from typing import Union
 import multiprocessing as mp
+from copy import deepcopy
 
 import numpy as np
 import pandas as pd
@@ -200,7 +201,6 @@ class Instrument(object):
         self.wl_bins = wl_bins
         self.wl_bin_widths = wl_bin_widths
         self.image_size = image_size
-        self.n_sampling_rot = n_sampling_rot
 
         if self.n_sampling_rot % 2 == 0:
             self.n_sampling_rot += 1
@@ -211,7 +211,6 @@ class Instrument(object):
         self.n_sampling_max = n_sampling_max
 
         self.simultaneous_chopping = simultaneous_chopping
-        self.t_int = integration_time
 
         # setting instrument parameters
         # Initialize instrument-specific parameters, such as collector
@@ -246,7 +245,6 @@ class Instrument(object):
 
         # adjust exposure time to be a multiple of the rotation period
         t_exp_old = deepcopy(self.t_exp)
-        t_total_old = deepcopy(self.t_total)
         self.t_exp = self.t_rot / np.ceil(self.t_rot / self.t_exp)
         if int(self.t_rot / self.t_exp) % 2 == 0:
             self.t_exp = self.t_rot / (int(self.t_rot / self.t_exp) + 1)

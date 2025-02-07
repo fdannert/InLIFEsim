@@ -199,6 +199,7 @@ class EvaluateBootstrapping:
             sig_b = sigmas[:, 1]
 
             sigma_want_get = {}
+
             for sg, si in zip(sig_g, sig_b):
                 sg_str = str(sg).replace(".", "-")
                 si_str = str(si).replace(".", "-")
@@ -208,8 +209,11 @@ class EvaluateBootstrapping:
                     (res[: int(len(res) / 2)], res[int(len(res) / 2) :])
                 )
 
-            sigma_gauss.append(sig_g)
-            sigma_bessel.append(sig_b)
+            sorted_indices = np.lexsort(
+                (sig_b, -sig_g)
+            )  # Sort by sig_b ascending, then sig_g descending
+            sigma_gauss.append(list(np.array(sig_g)[sorted_indices]))
+            sigma_bessel.append(list(np.array(sig_b)[sorted_indices]))
             sigmas_want_get.append(sigma_want_get)
 
         self.sigma_gauss = np.concatenate(sigma_gauss)
