@@ -931,10 +931,11 @@ def get_sigma_lookup(
     )
 
     sigma_want = np.linspace(
-        start=0, stop=t_dist(df=N - 1).ppf(1 - 1 / (B - 1)), num=n_sigma
+        start=0, stop=t_dist(df=N - 2).ppf(1 - 1 / (B - 1)), num=n_sigma
     )
 
-    p_want = t_dist(df=N - 1).cdf(sigma_want)
+    # test with N-1 noise samples has T-dist with dof=N-2
+    p_want = t_dist(df=N - 2).cdf(sigma_want)
 
     # Interpolate to find values in perc corresponding to p_want
     perc_interp = np.interp(p_want, perc, np.arange(len(perc)))
