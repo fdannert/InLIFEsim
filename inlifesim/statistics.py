@@ -809,26 +809,12 @@ def get_samples_lookup(
     Bootstrap-samples.
     """
 
-
-    s_x_gauss = norm.rvs(loc=0,
-                         scale=scale_gauss,
-                         size=B) if scale_gauss != 0 else np.zeros(B)
-    X_n_gauss = norm.rvs(loc=0,
-                         scale=scale_gauss,
-                         size=(B, N - 1)) if scale_gauss != 0 else np.zeros((B, N - 1))
-
-
-    s_x_imb = imb.rvs(loc=0,
-                     scale=scale_imb,
-                     n=nconv,
-                     size=B) if scale_imb != 0 else np.zeros(B)
-    X_n_imb = imb.rvs(loc=0,
-                     scale=scale_imb,
-                     n=nconv,
-                     size=(B, N - 1)) if scale_imb != 0 else np.zeros((B, N - 1))
-
-    s_x = s_x_gauss + s_x_imb
-    X_n = X_n_gauss + X_n_imb
+    s_x = norm.rvs(loc=0, scale=scale_gauss, size=B) + imb.rvs(
+        loc=0, scale=scale_imb, n=nconv, size=B
+    )
+    X_n = norm.rvs(loc=0, scale=scale_gauss, size=(B, N - 1)) + imb.rvs(
+        loc=0, scale=scale_imb, n=nconv, size=(B, N - 1)
+    )
 
     T_X = (
         (np.mean(X_n, axis=1) - s_x)
