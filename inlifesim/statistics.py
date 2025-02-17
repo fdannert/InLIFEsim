@@ -4,6 +4,7 @@ import numpy as np
 from scipy.special import kv, gamma
 from scipy.stats import rv_continuous, norm, linregress
 from scipy.stats import t as t_dist
+from scipy.stats import norm as norm_dist
 from scipy.interpolate import UnivariateSpline, Akima1DInterpolator
 import matplotlib.pyplot as plt
 from joblib import Parallel, delayed, parallel_config
@@ -826,16 +827,17 @@ def get_samples_lookup(
 
 
 def get_sigma_lookup(
-    sigma_gauss,
-    sigma_imb,
-    B,
-    N,
-    B_per,
-    n_sigma=1000,
-    nconv=11,
-    n_cpu=1,
-    verbose=False,
-    parallel=False,
+        sigma_gauss,
+        sigma_imb,
+        B,
+        N,
+        B_per,
+        n_sigma=1000,
+        nconv=11,
+        n_cpu=1,
+        verbose=False,
+        parallel=False,
+        distribution='t-dist',
 ):
     """
     Generates a lookup table for the sigma values of the combined Gaussian
@@ -916,12 +918,24 @@ def get_sigma_lookup(
         start=1 / len(T_X_sort), stop=1, num=len(T_X_sort), endpoint=True
     )
 
-    sigma_want = np.linspace(
-        start=0, stop=t_dist(df=N - 2).ppf(1 - 1 / (B - 1)), num=n_sigma
-    )
+    if distribution == 't-dist':
+        sigma_want = np.linspace(
+            start=0, stop=t_dist(df=N - 2).ppf(1 - 1 / (B - 1)), num=n_sigma
+        )
 
-    # test with N-1 noise samples has T-dist with dof=N-2
-    p_want = t_dist(df=N - 2).cdf(sigma_want)
+        # test with N-1 noise samples has T-dist with dof=N-2
+        p_want = t_dist(df=N - 2).cdf(sigma_want)
+
+    elif distribution == 'normal':
+        sigma_want = np.linspace(
+            start=0, stop=norm_dist().ppf(1 - 1 / (B - 1)), num=n_sigma
+        )
+
+        # test with N-1 noise samples has T-dist with dof=N-2
+        p_want = norm_dist().cdf(sigma_want)
+
+    else:
+        raise ValueError('distribution must be either "t-dist" or "normal"')
 
     # Interpolate to find values in perc corresponding to p_want
     perc_interp = np.interp(p_want, perc, np.arange(len(perc)))
