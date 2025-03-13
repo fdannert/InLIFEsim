@@ -116,8 +116,14 @@ def create_pink_psd(t_total: float,
     # freq = np.concatenate((np.flip(-freq), np.array([0]), freq))
 
     if (n_rot is None) or (n_rot == 1):
-        psd = (2 * rms ** 2 * t_total ** 3 / (2 * n_sampling_max) ** 2
-               / harmonic_number_n_cutoff / np.arange(1, n_sampling_max + 1))
+        psd = (
+                2
+                * rms ** 2
+                * t_total ** 3
+                # / (2 * n_sampling_max) ** 2
+                / harmonic_number_n_cutoff
+                / np.arange(1, n_sampling_max + 1)
+        )
         psd = np.insert(arr=psd, obj=0, values=0)
         psd = np.concatenate((np.flip(psd[1:]), psd))
 
@@ -125,9 +131,15 @@ def create_pink_psd(t_total: float,
         if hyperrot_noise is None:
             print('Hyperrot noise not specified, using default')
             hyperrot_noise = 'zero'
-        psd = (2 * rms ** 2 * t_total ** 3 / (2 * n_sampling_max) ** 2
-               / harmonic_number_n_cutoff
-               / np.arange(n_rot-1, n_sampling_max) * n_rot)
+        psd = (
+                2
+                * rms ** 2
+                * t_total ** 3
+                # / (2 * n_sampling_max) ** 2
+                / harmonic_number_n_cutoff
+                * n_rot
+                / np.arange(n_rot-1, n_sampling_max)
+        )
         if hyperrot_noise == 'zero':
             hyper_psd=np.zeros(n_rot-1)
         elif hyperrot_noise == 'max':

@@ -323,12 +323,14 @@ def draw_fourier_noise(
 
     if n_outputs == 1:
         size = (n_draws, int((psd.shape[-1] + 1) / 2))
-        scale = n_sampling_rot * np.sqrt(
-            psd[np.newaxis, int((psd.shape[-1] - 1) / 2) : :] / 2 / t_rot
+        scale = np.sqrt(
+            psd[np.newaxis, int((psd.shape[-1] - 1) / 2) : :]
+            / 2
+            / t_rot
         )
     else:
         size = (n_outputs, n_draws, int((psd.shape[-1] + 1) / 2))
-        scale = n_sampling_rot * np.sqrt(
+        scale = np.sqrt(
             psd[np.newaxis, np.newaxis, int((psd.shape[-1] - 1) / 2) : :]
             / 2
             / t_rot
