@@ -134,52 +134,57 @@ class Instrument(object):
     """
 
     def __init__(
-        self,
-        wl_bins: np.ndarray,
-        wl_bin_widths: np.ndarray,
-        image_size: int,
-        diameter_ap: float,
-        flux_division: np.ndarray,
-        throughput: float,
-        dist_star: float,
-        radius_star: float,
-        temp_star: float,
-        lat_star: float,
-        l_sun: float,
-        z: float,
-        temp_planet: float,
-        radius_planet: float,
-        separation_planet: float,
-        col_pos: np.ndarray,
-        phase_response: np.ndarray,
-        phase_response_chop: np.ndarray,
-        n_rot: float,
-        t_total: float,
-        t_exp: float,
-        # n_sampling_rot: int,
-        n_cpu: int,
-        rms_mode: str,
-        hyperrot_noise: Union[str, type(None)] = None,
-        n_sampling_max: int = int(1e7),
-        d_a_rms: Union[float, type(None)] = None,
-        d_phi_rms: Union[float, type(None)] = None,
-        d_pol_rms: Union[float, type(None)] = None,
-        d_x_rms: Union[float, type(None)] = None,
-        d_y_rms: Union[float, type(None)] = None,
-        d_a_co: Union[float, type(None)] = None,
-        d_phi_co: Union[float, type(None)] = None,
-        d_pol_co: Union[float, type(None)] = None,
-        d_x_co: Union[float, type(None)] = None,
-        d_y_co: Union[float, type(None)] = None,
-        n_draws: Union[int, type(None)] = None,
-        n_draws_per_run: Union[int, type(None)] = None,
-        time_series_return_values: Union[str, list] = "all",
-        flux_planet: np.ndarray = None,
-        simultaneous_chopping: bool = False,
-        verbose: bool = False,
-        draw_samples: bool = False,
-        get_single_bracewell: bool = False,
-        instrumental_source: Union[None, str] = None,
+            self,
+            wl_bins: np.ndarray,
+            wl_bin_widths: np.ndarray,
+            image_size: int,
+            diameter_ap: float,
+            flux_division: np.ndarray,
+            throughput: float,
+            dist_star: float,
+            radius_star: float,
+            temp_star: float,
+            lat_star: float,
+            l_sun: float,
+            z: float,
+            temp_planet: float,
+            radius_planet: float,
+            separation_planet: float,
+            col_pos: np.ndarray,
+            phase_response: np.ndarray,
+            phase_response_chop: np.ndarray,
+            n_rot: float,
+            t_total: float,
+            t_exp: float,
+            # n_sampling_rot: int,
+            n_cpu: int,
+            rms_mode: str,
+            hyperrot_noise: Union[str, type(None)] = None,
+            n_sampling_max: int = int(1e7),
+            d_a_rms: Union[float, type(None)] = None,
+            d_phi_rms: Union[float, type(None)] = None,
+            d_pol_rms: Union[float, type(None)] = None,
+            d_x_rms: Union[float, type(None)] = None,
+            d_y_rms: Union[float, type(None)] = None,
+            d_a_co: Union[float, type(None)] = None,
+            d_phi_co: Union[float, type(None)] = None,
+            d_pol_co: Union[float, type(None)] = None,
+            d_x_co: Union[float, type(None)] = None,
+            d_y_co: Union[float, type(None)] = None,
+            d_a_period_bin: Union[float, type(None)] = None,
+            d_phi_period_bin: Union[float, type(None)] = None,
+            d_pol_period_bin: Union[float, type(None)] = None,
+            d_x_period_bin: Union[float, type(None)] = None,
+            d_y_period_bin: Union[float, type(None)] = None,
+            n_draws: Union[int, type(None)] = None,
+            n_draws_per_run: Union[int, type(None)] = None,
+            time_series_return_values: Union[str, list] = "all",
+            flux_planet: np.ndarray = None,
+            simultaneous_chopping: bool = False,
+            verbose: bool = False,
+            draw_samples: bool = False,
+            get_single_bracewell: bool = False,
+            instrumental_source: Union[None, str] = None,
     ):
       
         self.verbose = verbose
@@ -301,15 +306,27 @@ class Instrument(object):
             self.d_pol_co = 10e3
             self.d_x_co = 0.64e-3
             self.d_y_co = 0.64e-3
-
-        self.harmonic_number_n_cutoff = {
-
-            "a": harmonic_number_approximation(self.d_a_co * self.t_total),
-            "phi": harmonic_number_approximation(self.d_phi_co * self.t_total),
-            "pol": harmonic_number_approximation(self.d_pol_co * self.t_total),
-            "x": harmonic_number_approximation(self.d_x_co * self.t_total),
-            "y": harmonic_number_approximation(self.d_y_co * self.t_total),
-
+        
+        self.harmonic_number_n_cutoff = {}
+        
+        def get_harmonic_cutoff(number, key):
+            if number is not None:
+                self.harmonic_number_n_cutoff[key] = harmonic_number_approximation(number * self.t_total)
+            else:
+                self.harmonic_number_n_cutoff[key] = None
+        
+        get_harmonic_cutoff(self.d_a_co, 'a')
+        get_harmonic_cutoff(self.d_phi_co, 'phi')
+        get_harmonic_cutoff(self.d_pol_co, 'pol')
+        get_harmonic_cutoff(self.d_x_co, 'x')
+        get_harmonic_cutoff(self.d_y_co, 'y')
+            
+        self.rms_period_bins = {
+            'a': d_a_period_bin,
+            'phi': d_phi_period_bin,
+            'pol': d_pol_period_bin,
+            'x': d_x_period_bin,
+            'y': d_y_period_bin,
         }
 
         # Initialize source parameters, including stellar (e.g., distance,
@@ -749,60 +766,62 @@ class Instrument(object):
         for i in range(self.wl_bins.shape[0]):
 
             arg = {
-                "A": self.A,
-                "wl": self.wl_bins[i],
-                "num_a": self.num_a,
-                "planet_template_chop": self.planet_template_chop[i, :],
-                "rms_mode": self.rms_mode,
-                "n_sampling_max": self.n_sampling_max,
-                "harmonic_number_n_cutoff": self.harmonic_number_n_cutoff,
-                "t_total": self.t_total,
-                "d_a_rms": self.d_a_rms,
-                "d_phi_rms": self.d_phi_rms,
-                "d_pol_rms": self.d_pol_rms,
-                "flux_star": self.flux_star[i],
-                "n_rot": self.n_rot,
-                "hyperrot_noise": self.hyperrot_noise,
+                'A': self.A,
+                'wl': self.wl_bins[i],
+                'num_a': self.num_a,
+                'planet_template_chop': self.planet_template_chop[i, :],
+                'rms_mode': self.rms_mode,
+                # 'n_sampling_max': self.n_sampling_max,
+                'n_sampling_total': self.n_sampling_total,
+                'harmonic_number_n_cutoff': self.harmonic_number_n_cutoff,
+                'rms_period_bins': self.rms_period_bins,
+                't_total': self.t_total,
+                'd_a_rms': self.d_a_rms,
+                'd_phi_rms': self.d_phi_rms,
+                'd_pol_rms': self.d_pol_rms,
+                'flux_star': self.flux_star[i],
+                'n_rot': self.n_rot,
+                'hyperrot_noise': self.hyperrot_noise,
             }
 
             if self.instrumental_source is None:
-                arg["grad_n_coeff"] = self.grad_n_coeff[i]
-                arg["hess_n_coeff"] = self.hess_n_coeff[i]
-                arg["grad_n_coeff_chop"] = self.grad_n_coeff_chop[i]
-                arg["hess_n_coeff_chop"] = self.hess_n_coeff_chop[i]
+                arg['grad_n_coeff'] = self.grad_n_coeff[i]
+                arg['hess_n_coeff'] = self.hess_n_coeff[i]
+                arg['grad_n_coeff_chop'] = self.grad_n_coeff_chop[i]
+                arg['hess_n_coeff_chop'] = self.hess_n_coeff_chop[i]
 
-            elif self.instrumental_source == "star":
-                arg["grad_n_coeff"] = {
+            elif self.instrumental_source == 'star':
+                arg['grad_n_coeff'] = {
                     k: self.grad_star[k][i] for k in self.grad_star.keys()
                 }
-                arg["hess_n_coeff"] = {
+                arg['hess_n_coeff'] = {
                     k: self.hess_star[k][i] for k in self.hess_star.keys()
                 }
-                arg["grad_n_coeff_chop"] = {
+                arg['grad_n_coeff_chop'] = {
                     k: self.grad_star_chop[k][i]
                     for k in self.grad_star_chop.keys()
                 }
-                arg["hess_n_coeff_chop"] = {
+                arg['hess_n_coeff_chop'] = {
                     k: self.hess_star_chop[k][i]
                     for k in self.hess_star_chop.keys()
                 }
 
-            elif self.instrumental_source == "ez":
-                arg["grad_n_coeff"] = {
+            elif self.instrumental_source == 'ez':
+                arg['grad_n_coeff'] = {
                     k: self.grad_ez[k][i] for k in self.grad_ez.keys()
                 }
-                arg["hess_n_coeff"] = {
+                arg['hess_n_coeff'] = {
                     k: self.hess_ez[k][i] for k in self.hess_ez.keys()
                 }
-                arg["grad_n_coeff_chop"] = {
+                arg['grad_n_coeff_chop'] = {
                     k: self.grad_ez_chop[k][i] for k in self.grad_ez_chop.keys()
                 }
-                arg["hess_n_coeff_chop"] = {
+                arg['hess_n_coeff_chop'] = {
                     k: self.hess_ez_chop[k][i] for k in self.hess_ez_chop.keys()
                 }
 
             else:
-                raise ValueError("Instrumental source not recognized")
+                raise ValueError('Instrumental source not recognized')
             mp_args.append(arg)
 
         if self.n_cpu == 1:
@@ -817,15 +836,15 @@ class Instrument(object):
             res = []
             for wl in self.wl_bins:
                 for r in results:
-                    if np.round(a=r["wl"], decimals=10) == np.round(
+                    if np.round(a=r['wl'], decimals=10) == np.round(
                         a=wl, decimals=10
                     ):
                         res.append(r)
 
         # update the results to the photon rate table
         res = pd.DataFrame.from_dict(res)
-        res["wl"] = np.round(res["wl"] * 1e6, 2).astype(str)
-        res.set_index(keys="wl", inplace=True)
+        res['wl'] = np.round(res['wl'] * 1e6, 2).astype(str)
+        res.set_index(keys='wl', inplace=True)
         self.photon_rates_chop.update(res)
 
     def combine_instrumental(self):
@@ -939,25 +958,23 @@ class Instrument(object):
 
         # calculate the PSDs of the perturbation terms
         self.d_a_psd, _, _ = create_pink_psd(
-
             t_total=self.t_total,
-            n_sampling_max=int(self.n_sampling_total / 2),
-            harmonic_number_n_cutoff=self.harmonic_number_n_cutoff["a"],
-
+            n_sampling_total=self.n_sampling_total,
             rms=d_a_rms,
             num_a=self.num_a,
+            harmonic_number_n_cutoff=self.harmonic_number_n_cutoff["a"],
+            period_bin=self.rms_period_bins["a"],
             n_rot=self.n_rot,
             hyperrot_noise=self.hyperrot_noise,
         )
 
         self.d_phi_psd, _, _ = create_pink_psd(
-
             t_total=self.t_total,
-            n_sampling_max=int(self.n_sampling_total / 2),
-            harmonic_number_n_cutoff=self.harmonic_number_n_cutoff["phi"],
-
+            n_sampling_total=self.n_sampling_total,
             rms=d_phi_rms,
             num_a=self.num_a,
+            harmonic_number_n_cutoff=self.harmonic_number_n_cutoff["phi"],
+            period_bin=self.rms_period_bins["phi"],
             n_rot=self.n_rot,
             hyperrot_noise=self.hyperrot_noise,
         )
@@ -968,14 +985,14 @@ class Instrument(object):
             ps = self.planet_signal_chop
 
         params = {
-            "n_sampling_rot": self.n_sampling_total,
+            "n_sampling_total": self.n_sampling_total,
             "n_outputs": self.n_outputs,
             "pn_sgl": self.photon_rates_nchop["pn_sgl"],
             "pn_ez": self.photon_rates_nchop["pn_ez"],
             "pn_lz": self.photon_rates_nchop["pn_lz"],
             "d_a_psd": self.d_a_psd,
             "d_phi_psd": self.d_phi_psd,
-            "t_rot": self.t_total,
+            "t_total": self.t_total,
             "gradient": self.grad_n_coeff[0],
             "gradient_chop": self.grad_n_coeff_chop[0],
             "hessian": self.hess_n_coeff[0],

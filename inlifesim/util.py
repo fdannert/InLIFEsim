@@ -1,7 +1,7 @@
 from typing import Union
 
 import numpy as np
-from scipy.fft import rfft
+from scipy.fft import rfft, irfft
 from matplotlib.collections import LineCollection
 from matplotlib.colors import Normalize
 from matplotlib.legend_handler import HandlerLineCollection
@@ -177,7 +177,7 @@ def harmonic_number_approximation(n):
     return gamma + np.log(n) + 0.5 / n - 1.0 / (12 * n**2) + 1.0 / (120 * n**4)
 
 
-def temp2freq_fft(time_series: np.ndarray, total_time: float):
+def temp2freq_fft(time_series: np.ndarray):
     """
     Fourier series from time to frequency space convention using fft
 
@@ -185,8 +185,6 @@ def temp2freq_fft(time_series: np.ndarray, total_time: float):
     ----------
     time_series : np.ndarray
         The time series that is to be converted to Fourier space
-    total_time : float
-        The total time of the time series in [s]
 
     Returns
     -------
@@ -206,12 +204,10 @@ def temp2freq_fft(time_series: np.ndarray, total_time: float):
         ),
         axis=-1,
     )
-    fourier_series *= total_time / fourier_series.shape[-1]
-
     return fourier_series
 
 
-def freq2temp_fft(fourier_series: np.ndarray, total_time: float):
+def freq2temp_fft(fourier_series: np.ndarray):
     """
     Fourier series from frequency to time space convention using fft
 
@@ -219,8 +215,6 @@ def freq2temp_fft(fourier_series: np.ndarray, total_time: float):
     ----------
     fourier_series : np.ndarray
         The Fourier series that is to be converted to temporal space
-    total_time : float
-        The total time of the time series in [s]
 
     Returns
     -------
@@ -233,9 +227,7 @@ def freq2temp_fft(fourier_series: np.ndarray, total_time: float):
         obj=np.arange(int(fourier_series.shape[-1] / 2)),
         axis=-1,
     )
-    time_series = np.fft.irfft(fourier_series, n=n)
-    time_series *= time_series.shape[-1] / total_time
-
+    time_series = irfft(fourier_series, n=n)
     return time_series
 
 

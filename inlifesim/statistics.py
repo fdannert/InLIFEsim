@@ -78,16 +78,16 @@ def draw_sample(params, return_variables=["xcorr"]):
     # Systematic noise: Generate Fourier noise for two PSD categories ('d_a_psd' and 'd_phi_psd')
     d_a_time, d_a_ft = draw_fourier_noise(
         psd=params["d_a_psd"][0],
-        n_sampling_rot=params["n_sampling_rot"],
-        t_rot=params["t_rot"],
+        n_sampling_total=params["n_sampling_total"],
+        t_total=params["t_total"],
         n_draws=params["n_draws"],
         n_outputs=params["d_a_psd"].shape[0],
     )
 
     d_phi_time, d_phi_ft = draw_fourier_noise(
         psd=params["d_phi_psd"][0],
-        n_sampling_rot=params["n_sampling_rot"],
-        t_rot=params["t_rot"],
+        n_sampling_total=params["n_sampling_total"],
+        t_total=params["t_total"],
         n_draws=params["n_draws"],
         n_outputs=params["d_a_psd"].shape[0],
     )
@@ -291,11 +291,11 @@ def calculate_systematic_response(
 
 
 def draw_fourier_noise(
-    psd: np.ndarray,
-    n_sampling_rot: int,
-    t_rot: float,
-    n_draws: int,
-    n_outputs: int = 1,
+        psd: np.ndarray,
+        n_sampling_total: int,
+        t_total: float,
+        n_draws: int,
+        n_outputs: int = 1,
 ):
     """
     Draw Fourier series from a given power spectral density (PSD). The output
@@ -306,12 +306,14 @@ def draw_fourier_noise(
     ----------
     psd
         Power spectral density
-    n_sampling_rot
-        Number of samples (exposures) per rotation of the array
-    t_rot
-        Array rotation period in [s]
+    n_sampling_total : int
+        Total number of data points sampled in the signal.
+    t_total : float
+        Total duration of the signal in seconds.
     n_draws
-        Number of times the experiment is drawn
+        Number of times the experiment is drawn.
+    n_outputs
+        Number of beam combiner outputs that are simulated.
 
     Returns
     -------
@@ -325,15 +327,17 @@ def draw_fourier_noise(
         size = (n_draws, int((psd.shape[-1] + 1) / 2))
         scale = np.sqrt(
             psd[np.newaxis, int((psd.shape[-1] - 1) / 2) : :]
+            * n_sampling_total ** 2
+            / t_total
             / 2
-            / t_rot
         )
     else:
         size = (n_outputs, n_draws, int((psd.shape[-1] + 1) / 2))
         scale = np.sqrt(
             psd[np.newaxis, np.newaxis, int((psd.shape[-1] - 1) / 2) : :]
+            * n_sampling_total ** 2
+            / t_total
             / 2
-            / t_rot
         )
 
     x_ft = np.random.normal(
@@ -345,7 +349,7 @@ def draw_fourier_noise(
     else:
         x_ft = np.concatenate((np.flip(x_ft[:, :, 1:], axis=-1), x_ft), axis=-1)
 
-    x = freq2temp_fft(fourier_series=x_ft, total_time=t_rot)
+    x = freq2temp_fft(fourier_series=x_ft)
 
     return x, x_ft
 

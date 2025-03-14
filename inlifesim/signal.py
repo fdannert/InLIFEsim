@@ -206,7 +206,7 @@ def planet_signal(
     n_planet_nchop = n_planet
 
     # Fourier transform of planet signal equivalent to Eq (33)
-    nfft = temp2freq_fft(n_planet_nchop, t_rot)
+    nfft = temp2freq_fft(n_planet_nchop)
 
     # creation of template function
     # removal of even components and DC
@@ -218,7 +218,7 @@ def planet_signal(
         )
 
     # transform back into time domain
-    planet_template_nchop = freq2temp_fft(nfft_odd, t_rot)
+    planet_template_nchop = freq2temp_fft(nfft_odd)
 
     # normalize the template function to rms of one
     planet_template_nchop = (
@@ -249,7 +249,7 @@ def planet_signal(
         n_planet_chop *= 0.5
 
     # Fourier transform of planet signal equivalent to Eq (33)
-    nfft_chop = temp2freq_fft(n_planet_chop, t_rot)
+    nfft_chop = temp2freq_fft(n_planet_chop)
 
     # creation of template function
     # removal of even components and DC
@@ -260,7 +260,7 @@ def planet_signal(
     )
 
     # transform back into time domain
-    planet_template_chop = freq2temp_fft(nfft_odd_chop, t_rot)
+    planet_template_chop = freq2temp_fft(nfft_odd_chop)
 
     # normalize the template function to rms of one
     planet_template_chop = (
