@@ -650,7 +650,6 @@ def sys_noise_chop(mp_arg) -> dict:
 
     noise_chop['sn_so_aphi'] = np.sum(
         (hess_n_coeff['aphi'] - hess_n_coeff_chop['aphi']) ** 2
-        * 2
         * d_a_d_phi_j_hat_2_chop
     )
 

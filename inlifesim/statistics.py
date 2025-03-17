@@ -57,22 +57,22 @@ def draw_sample(params, return_variables=["xcorr"]):
         ret_all = False
 
     # Define the size of the output arrays based on parameters
-    size = (params["n_outputs"], params["n_draws"], params["n_sampling_rot"])
+    size = (params["n_outputs"], params["n_draws"], params["n_sampling_total"])
 
     rdict = {}
     # random noise
     # Generate poisson-distributed noise for single-band power noise ('pn_sgl_time')
     rdict["pn_sgl_time"] = np.random.poisson(
-        lam=params["pn_sgl"][0] ** 2 / params["n_sampling_rot"] / 2, size=size
+        lam=params["pn_sgl"][0] ** 2 / params["n_sampling_total"] / 2, size=size
     )
 
     # Generate poisson-distributed noise for 'pn_ez_time' and 'pn_lz_time'
     rdict["pn_ez_time"] = np.random.poisson(
-        lam=params["pn_ez"][0] ** 2 / params["n_sampling_rot"] / 2, size=size
+        lam=params["pn_ez"][0] ** 2 / params["n_sampling_total"] / 2, size=size
     )
 
     rdict["pn_lz_time"] = np.random.poisson(
-        lam=params["pn_lz"][0] ** 2 / params["n_sampling_rot"] / 2, size=size
+        lam=params["pn_lz"][0] ** 2 / params["n_sampling_total"] / 2, size=size
     )
 
     # Systematic noise: Generate Fourier noise for two PSD categories ('d_a_psd' and 'd_phi_psd')
@@ -108,8 +108,10 @@ def draw_sample(params, return_variables=["xcorr"]):
     rdict.update(sys_nchop)
 
     sys_chop = calculate_systematic_response(
-        gradient=params["gradient_chop"],
-        hessian=params["hessian_chop"],
+        gradient=params["gradient"],
+        gradient_chop=params["gradient_chop"],
+        hessian=params["hessian"],
+        hessian_chop=params["hessian_chop"],
         d_a_time=d_a_time,
         d_phi_time=d_phi_time,
         chop=True,
@@ -227,11 +229,13 @@ def draw_sample(params, return_variables=["xcorr"]):
 
 
 def calculate_systematic_response(
-    gradient: np.ndarray,
-    hessian: np.ndarray,
-    d_a_time: np.ndarray,
-    d_phi_time: np.ndarray,
-    chop: bool,
+        gradient: np.ndarray,
+        hessian: np.ndarray,
+        d_a_time: np.ndarray,
+        d_phi_time: np.ndarray,
+        chop: bool,
+        gradient_chop: Union[np.ndarray, None] = None,
+        hessian_chop: Union[np.ndarray, None] = None,
 ):
     """
     Calculate systematic response of the system based on provided gradients, hessians,
@@ -253,35 +257,54 @@ def calculate_systematic_response(
              their corresponding keys.
 
     """
+
+    gradient_use = {}
+    hessian_use = {}
+
     if chop:
         ext = "_chop"
+        if (gradient_chop is None) or (hessian_chop is None):
+            raise ValueError(
+                "Chopping condition is enabled, but chopping gradients and "
+                "hessians are not provided."
+            )
+
+        for key in ['a', 'phi']:
+            gradient_use[key] = gradient[key] - gradient_chop[key]
+        for key in ['aphi', 'aa', 'phiphi']:
+            hessian_use[key] = hessian[key] - hessian_chop[key]
+
     else:
         ext = ""
+        for key in ['a', 'phi']:
+            gradient_use[key] = gradient[key]
+        for key in ['aphi', 'aa', 'phiphi']:
+            hessian_use[key] = hessian[key]
 
     rdict = {}
     rdict["sys_a" + ext] = np.sum(
-        gradient["a"][:, np.newaxis, np.newaxis] * d_a_time, axis=0
+        gradient_use["a"][:, np.newaxis, np.newaxis] * d_a_time, axis=0
     )
     rdict["sys_phi" + ext] = np.sum(
-        gradient["phi"][:, np.newaxis, np.newaxis] * d_phi_time, axis=0
+        gradient_use["phi"][:, np.newaxis, np.newaxis] * d_phi_time, axis=0
     )
 
     rdict["sys_aphi" + ext] = np.sum(
-        hessian["aphi"][:, :, np.newaxis, np.newaxis]
+        hessian_use["aphi"][:, :, np.newaxis, np.newaxis]
         * d_a_time[:, np.newaxis, :, :]
         * d_phi_time[np.newaxis, :, :, :],
         axis=(0, 1),
     )
 
     rdict["sys_aa" + ext] = np.sum(
-        hessian["aa"][:, :, np.newaxis, np.newaxis]
+        hessian_use["aa"][:, :, np.newaxis, np.newaxis]
         * d_a_time[:, np.newaxis, :, :]
         * d_a_time[np.newaxis, :, :, :],
         axis=(0, 1),
     )
 
     rdict["sys_phiphi" + ext] = np.sum(
-        hessian["phiphi"][:, :, np.newaxis, np.newaxis]
+        hessian_use["phiphi"][:, :, np.newaxis, np.newaxis]
         * d_phi_time[:, np.newaxis, :, :]
         * d_phi_time[np.newaxis, :, :, :],
         axis=(0, 1),

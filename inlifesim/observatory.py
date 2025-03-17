@@ -1001,12 +1001,12 @@ class Instrument(object):
             "planet_template": self.planet_template_chop,
         }
 
-
         if self.n_cpu == 1:
             params["n_draws"] = self.n_draws
             self.time_samples = draw_sample(
                 params=params, return_variables=self.time_samples_return_values
             )
+
         else:
             if self.verbose:
                 print("")
@@ -1064,8 +1064,8 @@ class Instrument(object):
                     self.time_samples[k][put] = r[k]
                     time_samples_head[k] += self.n_draws_per_run
 
-            if self.verbose:
-                print("[Done]")
+        if self.verbose:
+            print("[Done]")
 
     def cleanup(self):
         """
@@ -1198,6 +1198,7 @@ class Instrument(object):
             bl=self.bl,
             num_a=self.num_a,
             n_sampling_rot=self.n_sampling_rot,
+            n_sampling_total=self.n_sampling_total,
             simultaneous_chopping=self.simultaneous_chopping,
             separation_planet=self.separation_planet,
             dist_star=self.dist_star,

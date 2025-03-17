@@ -102,23 +102,24 @@ def planet_response(
     return n_planet
 
 def planet_signal(
-    separation_planet: float,
-    dist_star: float,
-    # t_rot: float,
-    t_exp: float,
-    t_total: float,
-    t_rot: float,
-    n_sampling_rot: int,
-    # phi_rot: np.ndarray,
-    flux_planet: np.ndarray,
-    A: np.ndarray,
-    phi: np.ndarray,
-    phi_r: np.ndarray,
-    wl_bins: np.ndarray,
-    bl: np.ndarray,
-    num_a: int,
-    simultaneous_chopping: bool,
-    phi_rot_start: float = 0,
+        separation_planet: float,
+        dist_star: float,
+        # t_rot: float,
+        t_exp: float,
+        t_total: float,
+        t_rot: float,
+        n_sampling_rot: int,
+        n_sampling_total: int,
+        # phi_rot: np.ndarray,
+        flux_planet: np.ndarray,
+        A: np.ndarray,
+        phi: np.ndarray,
+        phi_r: np.ndarray,
+        wl_bins: np.ndarray,
+        bl: np.ndarray,
+        num_a: int,
+        simultaneous_chopping: bool,
+        phi_rot_start: float = 0,
 ):
     """
     Calculates the planet signal and template function for the planet signal
@@ -220,10 +221,12 @@ def planet_signal(
     # transform back into time domain
     planet_template_nchop = freq2temp_fft(nfft_odd)
 
-    # normalize the template function to rms of one
+    # normalize the template function to a unit vector in fourier space
     planet_template_nchop = (
         planet_template_nchop
-        / np.std(planet_template_nchop, axis=1)[:, np.newaxis]
+        / np.linalg.norm(planet_template_nchop, axis=1)[:, np.newaxis]
+        * np.sqrt(n_sampling_total)
+        # / np.sum(np.abs(planet_template_nchop), axis=1)[:, np.newaxis]
     )
 
     # planet_template_nchop = np.abs(planet_template_nchop)
@@ -265,7 +268,9 @@ def planet_signal(
     # normalize the template function to rms of one
     planet_template_chop = (
         planet_template_chop
-        / np.std(planet_template_chop, axis=1)[:, np.newaxis]
+        / np.linalg.norm(planet_template_chop, axis=1)[:, np.newaxis]
+        * np.sqrt(n_sampling_total)
+        # / np.sum(np.abs(planet_template_chop), axis=1)[:, np.newaxis]
     )
 
     # planet_template_chop = np.abs(planet_template_chop+np.min(planet_template_chop.real))-np.min(planet_template_chop.real)
