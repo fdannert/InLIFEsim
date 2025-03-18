@@ -503,6 +503,8 @@ def sys_noise_chop(mp_arg) -> dict:
     n_rot = mp_arg['n_rot']
     hyperrot_noise = mp_arg['hyperrot_noise']
 
+    t_exp = t_total / n_sampling_total
+
     # calculate the Fourier components of the planet template
     planet_template_c_fft = temp2freq_fft(
         time_series=planet_template_chop
@@ -557,8 +559,8 @@ def sys_noise_chop(mp_arg) -> dict:
     noise_chop = {'wl': wl}
 
     # polarization noise
-    dn_pol = (flux_star * A**2 * avg_d_pol_2).sum()
-    noise_chop['pn_pa'] = np.sqrt(dn_pol * t_total)
+    dn_pol = (flux_star * t_total * A**2 * avg_d_pol_2).sum()
+    noise_chop['pn_pa'] = np.sqrt(dn_pol)
 
 
     # calculate fourier components
@@ -575,6 +577,7 @@ def sys_noise_chop(mp_arg) -> dict:
         fill_value=(
             np.sum(d_phi_psd * np.abs(planet_template_c_fft) ** 2)
             / t_total
+            # / n_sampling_total ** 2
             # / t_total**5
             # * len(planet_template_chop) ** 4
         ),
@@ -593,6 +596,7 @@ def sys_noise_chop(mp_arg) -> dict:
     # first order phase noise
     noise_chop['sn_fo_phi'] = np.sum(
         (grad_n_coeff['phi'] - grad_n_coeff_chop['phi']) ** 2
+        * t_exp ** 2  # sensitivity coefficients are in units 1/s
         * d_phi_j_hat_2_chop
     )
 
@@ -602,12 +606,12 @@ def sys_noise_chop(mp_arg) -> dict:
             [
                 (
                     (
-                        hess_n_coeff['aa'][j, j]
+                        hess_n_coeff['aa'][j, j] * t_exp
                         # - hess_n_coeff_chop['aa'][j, j]
                     )
                     * d_a_j_hat_2_chop[j]
                     + (
-                        hess_n_coeff['phiphi'][j, j]
+                        hess_n_coeff['phiphi'][j, j] * t_exp
                         # - hess_n_coeff_chop['phiphi'][j, j]
                     )
                     * d_phi_j_hat_2_chop[j]
@@ -616,7 +620,7 @@ def sys_noise_chop(mp_arg) -> dict:
             ]
         )
     )
-    noise_chop['pn_snfl'] = np.sqrt(dn_null_floor * t_total)
+    noise_chop['pn_snfl'] = np.sqrt(dn_null_floor)
 
     # second order dadphi
     # d_a_d_phi_j_hat_2_chop = np.full(
@@ -643,6 +647,7 @@ def sys_noise_chop(mp_arg) -> dict:
         )
                    # * len(planet_template_chop) ** 2
                    / t_total ** 2
+                   # / n_sampling_total ** 2
         # * len(planet_template_chop) ** 6
         # / t_total**8
         # / n_rot,
@@ -650,6 +655,7 @@ def sys_noise_chop(mp_arg) -> dict:
 
     noise_chop['sn_so_aphi'] = np.sum(
         (hess_n_coeff['aphi'] - hess_n_coeff_chop['aphi']) ** 2
+        * t_exp ** 2
         * d_a_d_phi_j_hat_2_chop
     )
 
