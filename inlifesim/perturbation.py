@@ -478,32 +478,36 @@ def sys_noise_chop(mp_arg) -> dict:
 
     # TODO: Insert references to the equations once the publication is written
 
-    flux_star = mp_arg["flux_star"]
-    A = mp_arg["A"]
-    wl = mp_arg["wl"]
-    num_a = mp_arg["num_a"]
-    planet_template_chop = mp_arg["planet_template_chop"]
-    grad_n_coeff = mp_arg["grad_n_coeff"]
-    hess_n_coeff = mp_arg["hess_n_coeff"]
-    grad_n_coeff_chop = mp_arg["grad_n_coeff_chop"]
-    hess_n_coeff_chop = mp_arg["hess_n_coeff_chop"]
+    flux_star = mp_arg['flux_star']
+    A = mp_arg['A']
+    wl = mp_arg['wl']
+    num_a = mp_arg['num_a']
+    planet_template_chop = mp_arg['planet_template_chop']
+    grad_n_coeff = mp_arg['grad_n_coeff']
+    hess_n_coeff = mp_arg['hess_n_coeff']
+    grad_n_coeff_chop = mp_arg['grad_n_coeff_chop']
+    hess_n_coeff_chop = mp_arg['hess_n_coeff_chop']
     # c_phi = mp_arg['c_phi']
     # c_aphi = mp_arg['c_aphi']
     # c_aa = mp_arg['c_aa']
     # c_phiphi = mp_arg['c_phiphi']
-    rms_mode = mp_arg["rms_mode"]
-    n_sampling_max = mp_arg["n_sampling_max"]
-    harmonic_number_n_cutoff = mp_arg["harmonic_number_n_cutoff"]
-    t_total = mp_arg["t_total"]
-    d_a_rms = mp_arg["d_a_rms"]
-    d_phi_rms = mp_arg["d_phi_rms"]
-    d_pol_rms = mp_arg["d_pol_rms"]
-    n_rot = mp_arg["n_rot"]
-    hyperrot_noise = mp_arg["hyperrot_noise"]
+    rms_mode = mp_arg['rms_mode']
+    # n_sampling_max = mp_arg['n_sampling_max']
+    n_sampling_total = mp_arg['n_sampling_total']
+    harmonic_number_n_cutoff = mp_arg['harmonic_number_n_cutoff']
+    rms_period_bins = mp_arg['rms_period_bins']
+    t_total = mp_arg['t_total']
+    d_a_rms = mp_arg['d_a_rms']
+    d_phi_rms = mp_arg['d_phi_rms']
+    d_pol_rms = mp_arg['d_pol_rms']
+    n_rot = mp_arg['n_rot']
+    hyperrot_noise = mp_arg['hyperrot_noise']
+
+    t_exp = t_total / n_sampling_total
 
     # calculate the Fourier components of the planet template
     planet_template_c_fft = temp2freq_fft(
-        time_series=planet_template_chop, total_time=t_total
+        time_series=planet_template_chop
     )
 
     # adjust rms values
@@ -520,43 +524,43 @@ def sys_noise_chop(mp_arg) -> dict:
     # create PSDs
     d_a_psd, avg_d_a_2, d_a_b_2 = create_pink_psd(
         t_total=t_total,
-        n_sampling_max=int(len(planet_template_chop) / 2),
-        harmonic_number_n_cutoff=harmonic_number_n_cutoff["a"],
+        n_sampling_total=n_sampling_total,
         rms=d_a_rms,
         num_a=num_a,
+        harmonic_number_n_cutoff=harmonic_number_n_cutoff['a'],
+        period_bin=rms_period_bins['a'],
         n_rot=n_rot,
         hyperrot_noise=hyperrot_noise,
     )
 
     d_phi_psd, avg_d_phi_2, d_phi_b_2 = create_pink_psd(
         t_total=t_total,
-        n_sampling_max=int(len(planet_template_chop) / 2),
-        harmonic_number_n_cutoff=harmonic_number_n_cutoff["phi"],
+        n_sampling_total=n_sampling_total,
         rms=d_phi_rms,
         num_a=1,
+        harmonic_number_n_cutoff=harmonic_number_n_cutoff['phi'],
+        period_bin=rms_period_bins['phi'],
         n_rot=n_rot,
         hyperrot_noise=hyperrot_noise,
     )
 
     d_pol_psd, avg_d_pol_2, d_pol_b_2 = create_pink_psd(
         t_total=t_total,
-        n_sampling_max=int(len(planet_template_chop) / 2),
-        harmonic_number_n_cutoff=harmonic_number_n_cutoff["pol"],
+        n_sampling_total=n_sampling_total,
         rms=d_pol_rms,
         num_a=1,
+        harmonic_number_n_cutoff=harmonic_number_n_cutoff['pol'],
+        period_bin=rms_period_bins['pol'],
         n_rot=n_rot,
         hyperrot_noise=hyperrot_noise,
     )
 
-    # d_a_psd /= 19.71
-    # d_phi_psd /= 19.71
-
     # noise contribution
-    noise_chop = {"wl": wl}
+    noise_chop = {'wl': wl}
 
     # polarization noise
-    dn_pol = (flux_star * A**2 * avg_d_pol_2).sum()
-    noise_chop["pn_pa"] = np.sqrt(dn_pol * t_total)
+    dn_pol = (flux_star * t_total * A**2 * avg_d_pol_2).sum()
+    noise_chop['pn_pa'] = np.sqrt(dn_pol)
 
 
     # calculate fourier components
@@ -572,8 +576,10 @@ def sys_noise_chop(mp_arg) -> dict:
         shape=num_a,
         fill_value=(
             np.sum(d_phi_psd * np.abs(planet_template_c_fft) ** 2)
-            / t_total**5
-            * len(planet_template_chop) ** 4
+            / t_total
+            # / n_sampling_total ** 2
+            # / t_total**5
+            # * len(planet_template_chop) ** 4
         ),
     )
 
@@ -581,14 +587,16 @@ def sys_noise_chop(mp_arg) -> dict:
         shape=num_a,
         fill_value=(
             np.sum(d_a_psd * np.abs(planet_template_c_fft) ** 2)
-            / t_total**5
-            * len(planet_template_chop) ** 4
+            / t_total
+            # / t_total**5
+            # * len(planet_template_chop) ** 4
         ),
     )
 
     # first order phase noise
-    noise_chop["sn_fo_phi"] = np.sum(
-        (grad_n_coeff["phi"] - grad_n_coeff_chop["phi"]) ** 2
+    noise_chop['sn_fo_phi'] = np.sum(
+        (grad_n_coeff['phi'] - grad_n_coeff_chop['phi']) ** 2
+        * t_exp ** 2  # sensitivity coefficients are in units 1/s
         * d_phi_j_hat_2_chop
     )
 
@@ -598,12 +606,12 @@ def sys_noise_chop(mp_arg) -> dict:
             [
                 (
                     (
-                        hess_n_coeff["aa"][j, j]
+                        hess_n_coeff['aa'][j, j] * t_exp
                         # - hess_n_coeff_chop['aa'][j, j]
                     )
                     * d_a_j_hat_2_chop[j]
                     + (
-                        hess_n_coeff["phiphi"][j, j]
+                        hess_n_coeff['phiphi'][j, j] * t_exp
                         # - hess_n_coeff_chop['phiphi'][j, j]
                     )
                     * d_phi_j_hat_2_chop[j]
@@ -612,7 +620,7 @@ def sys_noise_chop(mp_arg) -> dict:
             ]
         )
     )
-    noise_chop["pn_snfl"] = np.sqrt(dn_null_floor * t_total)
+    noise_chop['pn_snfl'] = np.sqrt(dn_null_floor)
 
     # second order dadphi
     # d_a_d_phi_j_hat_2_chop = np.full(
@@ -634,25 +642,28 @@ def sys_noise_chop(mp_arg) -> dict:
     d_a_d_phi_j_hat_2_chop = np.full(
         shape=(num_a, num_a),
         fill_value=np.sum(
-            np.convolve(d_a_psd[0], d_phi_psd, mode="same")
+            np.convolve(d_a_psd[0], d_phi_psd, mode='same')
             * np.abs(planet_template_c_fft) ** 2
         )
-        * len(planet_template_chop) ** 6
-        / t_total**8
-        / n_rot,
+                   # * len(planet_template_chop) ** 2
+                   / t_total ** 2
+                   # / n_sampling_total ** 2
+        # * len(planet_template_chop) ** 6
+        # / t_total**8
+        # / n_rot,
     )
 
-    noise_chop["sn_so_aphi"] = np.sum(
-        (hess_n_coeff["aphi"] - hess_n_coeff_chop["aphi"]) ** 2
-        * 2
+    noise_chop['sn_so_aphi'] = np.sum(
+        (hess_n_coeff['aphi'] - hess_n_coeff_chop['aphi']) ** 2
+        * t_exp ** 2
         * d_a_d_phi_j_hat_2_chop
     )
 
-    noise_chop["sn_fo"] = noise_chop["sn_fo_phi"]
-    noise_chop["sn_so"] = noise_chop["sn_so_aphi"]
+    noise_chop['sn_fo'] = noise_chop['sn_fo_phi']
+    noise_chop['sn_so'] = noise_chop['sn_so_aphi']
 
-    noise_chop["sn"] = np.sqrt(
-        noise_chop["sn_fo_phi"] + noise_chop["sn_so_aphi"]
+    noise_chop['sn'] = np.sqrt(
+        noise_chop['sn_fo_phi'] + noise_chop['sn_so_aphi']
     )
 
     debug_sys_noise_chop(

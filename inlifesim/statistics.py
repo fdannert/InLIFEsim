@@ -4,6 +4,7 @@ import numpy as np
 from scipy.special import kv, gamma
 from scipy.stats import rv_continuous, norm, linregress
 from scipy.stats import t as t_dist
+from scipy.stats import norm as norm_dist
 from scipy.interpolate import UnivariateSpline, Akima1DInterpolator
 import matplotlib.pyplot as plt
 from joblib import Parallel, delayed, parallel_config
@@ -56,37 +57,37 @@ def draw_sample(params, return_variables=["xcorr"]):
         ret_all = False
 
     # Define the size of the output arrays based on parameters
-    size = (params["n_outputs"], params["n_draws"], params["n_sampling_rot"])
+    size = (params["n_outputs"], params["n_draws"], params["n_sampling_total"])
 
     rdict = {}
     # random noise
     # Generate poisson-distributed noise for single-band power noise ('pn_sgl_time')
     rdict["pn_sgl_time"] = np.random.poisson(
-        lam=params["pn_sgl"][0] ** 2 / params["n_sampling_rot"] / 2, size=size
+        lam=params["pn_sgl"][0] ** 2 / params["n_sampling_total"] / 2, size=size
     )
 
     # Generate poisson-distributed noise for 'pn_ez_time' and 'pn_lz_time'
     rdict["pn_ez_time"] = np.random.poisson(
-        lam=params["pn_ez"][0] ** 2 / params["n_sampling_rot"] / 2, size=size
+        lam=params["pn_ez"][0] ** 2 / params["n_sampling_total"] / 2, size=size
     )
 
     rdict["pn_lz_time"] = np.random.poisson(
-        lam=params["pn_lz"][0] ** 2 / params["n_sampling_rot"] / 2, size=size
+        lam=params["pn_lz"][0] ** 2 / params["n_sampling_total"] / 2, size=size
     )
 
     # Systematic noise: Generate Fourier noise for two PSD categories ('d_a_psd' and 'd_phi_psd')
     d_a_time, d_a_ft = draw_fourier_noise(
         psd=params["d_a_psd"][0],
-        n_sampling_rot=params["n_sampling_rot"],
-        t_rot=params["t_rot"],
+        n_sampling_total=params["n_sampling_total"],
+        t_total=params["t_total"],
         n_draws=params["n_draws"],
         n_outputs=params["d_a_psd"].shape[0],
     )
 
     d_phi_time, d_phi_ft = draw_fourier_noise(
         psd=params["d_phi_psd"][0],
-        n_sampling_rot=params["n_sampling_rot"],
-        t_rot=params["t_rot"],
+        n_sampling_total=params["n_sampling_total"],
+        t_total=params["t_total"],
         n_draws=params["n_draws"],
         n_outputs=params["d_a_psd"].shape[0],
     )
@@ -107,8 +108,10 @@ def draw_sample(params, return_variables=["xcorr"]):
     rdict.update(sys_nchop)
 
     sys_chop = calculate_systematic_response(
-        gradient=params["gradient_chop"],
-        hessian=params["hessian_chop"],
+        gradient=params["gradient"],
+        gradient_chop=params["gradient_chop"],
+        hessian=params["hessian"],
+        hessian_chop=params["hessian_chop"],
         d_a_time=d_a_time,
         d_phi_time=d_phi_time,
         chop=True,
@@ -226,11 +229,13 @@ def draw_sample(params, return_variables=["xcorr"]):
 
 
 def calculate_systematic_response(
-    gradient: np.ndarray,
-    hessian: np.ndarray,
-    d_a_time: np.ndarray,
-    d_phi_time: np.ndarray,
-    chop: bool,
+        gradient: np.ndarray,
+        hessian: np.ndarray,
+        d_a_time: np.ndarray,
+        d_phi_time: np.ndarray,
+        chop: bool,
+        gradient_chop: Union[np.ndarray, None] = None,
+        hessian_chop: Union[np.ndarray, None] = None,
 ):
     """
     Calculate systematic response of the system based on provided gradients, hessians,
@@ -252,35 +257,54 @@ def calculate_systematic_response(
              their corresponding keys.
 
     """
+
+    gradient_use = {}
+    hessian_use = {}
+
     if chop:
         ext = "_chop"
+        if (gradient_chop is None) or (hessian_chop is None):
+            raise ValueError(
+                "Chopping condition is enabled, but chopping gradients and "
+                "hessians are not provided."
+            )
+
+        for key in ['a', 'phi']:
+            gradient_use[key] = gradient[key] - gradient_chop[key]
+        for key in ['aphi', 'aa', 'phiphi']:
+            hessian_use[key] = hessian[key] - hessian_chop[key]
+
     else:
         ext = ""
+        for key in ['a', 'phi']:
+            gradient_use[key] = gradient[key]
+        for key in ['aphi', 'aa', 'phiphi']:
+            hessian_use[key] = hessian[key]
 
     rdict = {}
     rdict["sys_a" + ext] = np.sum(
-        gradient["a"][:, np.newaxis, np.newaxis] * d_a_time, axis=0
+        gradient_use["a"][:, np.newaxis, np.newaxis] * d_a_time, axis=0
     )
     rdict["sys_phi" + ext] = np.sum(
-        gradient["phi"][:, np.newaxis, np.newaxis] * d_phi_time, axis=0
+        gradient_use["phi"][:, np.newaxis, np.newaxis] * d_phi_time, axis=0
     )
 
     rdict["sys_aphi" + ext] = np.sum(
-        hessian["aphi"][:, :, np.newaxis, np.newaxis]
+        hessian_use["aphi"][:, :, np.newaxis, np.newaxis]
         * d_a_time[:, np.newaxis, :, :]
         * d_phi_time[np.newaxis, :, :, :],
         axis=(0, 1),
     )
 
     rdict["sys_aa" + ext] = np.sum(
-        hessian["aa"][:, :, np.newaxis, np.newaxis]
+        hessian_use["aa"][:, :, np.newaxis, np.newaxis]
         * d_a_time[:, np.newaxis, :, :]
         * d_a_time[np.newaxis, :, :, :],
         axis=(0, 1),
     )
 
     rdict["sys_phiphi" + ext] = np.sum(
-        hessian["phiphi"][:, :, np.newaxis, np.newaxis]
+        hessian_use["phiphi"][:, :, np.newaxis, np.newaxis]
         * d_phi_time[:, np.newaxis, :, :]
         * d_phi_time[np.newaxis, :, :, :],
         axis=(0, 1),
@@ -290,11 +314,11 @@ def calculate_systematic_response(
 
 
 def draw_fourier_noise(
-    psd: np.ndarray,
-    n_sampling_rot: int,
-    t_rot: float,
-    n_draws: int,
-    n_outputs: int = 1,
+        psd: np.ndarray,
+        n_sampling_total: int,
+        t_total: float,
+        n_draws: int,
+        n_outputs: int = 1,
 ):
     """
     Draw Fourier series from a given power spectral density (PSD). The output
@@ -305,12 +329,14 @@ def draw_fourier_noise(
     ----------
     psd
         Power spectral density
-    n_sampling_rot
-        Number of samples (exposures) per rotation of the array
-    t_rot
-        Array rotation period in [s]
+    n_sampling_total : int
+        Total number of data points sampled in the signal.
+    t_total : float
+        Total duration of the signal in seconds.
     n_draws
-        Number of times the experiment is drawn
+        Number of times the experiment is drawn.
+    n_outputs
+        Number of beam combiner outputs that are simulated.
 
     Returns
     -------
@@ -322,15 +348,19 @@ def draw_fourier_noise(
 
     if n_outputs == 1:
         size = (n_draws, int((psd.shape[-1] + 1) / 2))
-        scale = n_sampling_rot * np.sqrt(
-            psd[np.newaxis, int((psd.shape[-1] - 1) / 2) : :] / 2 / t_rot
+        scale = np.sqrt(
+            psd[np.newaxis, int((psd.shape[-1] - 1) / 2) : :]
+            * n_sampling_total ** 2
+            / t_total
+            / 2
         )
     else:
         size = (n_outputs, n_draws, int((psd.shape[-1] + 1) / 2))
-        scale = n_sampling_rot * np.sqrt(
+        scale = np.sqrt(
             psd[np.newaxis, np.newaxis, int((psd.shape[-1] - 1) / 2) : :]
+            * n_sampling_total ** 2
+            / t_total
             / 2
-            / t_rot
         )
 
     x_ft = np.random.normal(
@@ -342,7 +372,7 @@ def draw_fourier_noise(
     else:
         x_ft = np.concatenate((np.flip(x_ft[:, :, 1:], axis=-1), x_ft), axis=-1)
 
-    x = freq2temp_fft(fourier_series=x_ft, total_time=t_rot)
+    x = freq2temp_fft(fourier_series=x_ft)
 
     return x, x_ft
 
@@ -815,7 +845,7 @@ def get_samples_lookup(
     X_n = norm.rvs(loc=0, scale=scale_gauss, size=(B, N - 1)) + imb.rvs(
         loc=0, scale=scale_imb, n=nconv, size=(B, N - 1)
     )
-    # T_X = s_x / np.std(X_n, axis=1)
+
     T_X = (
         (np.mean(X_n, axis=1) - s_x)
         / np.std(X_n, axis=1)
@@ -826,16 +856,17 @@ def get_samples_lookup(
 
 
 def get_sigma_lookup(
-    sigma_gauss,
-    sigma_imb,
-    B,
-    N,
-    B_per,
-    n_sigma=1000,
-    nconv=11,
-    n_cpu=1,
-    verbose=False,
-    parallel=False,
+        sigma_gauss,
+        sigma_imb,
+        B,
+        N,
+        B_per,
+        n_sigma=1000,
+        nconv=11,
+        n_cpu=1,
+        verbose=False,
+        parallel=False,
+        distribution='t-dist',
 ):
     """
     Generates a lookup table for the sigma values of the combined Gaussian
@@ -916,11 +947,24 @@ def get_sigma_lookup(
         start=1 / len(T_X_sort), stop=1, num=len(T_X_sort), endpoint=True
     )
 
-    sigma_want = np.linspace(
-        start=0, stop=t_dist(df=N - 1).ppf(1 - 1 / (B - 1)), num=n_sigma
-    )
+    if distribution == 't-dist':
+        sigma_want = np.linspace(
+            start=0, stop=t_dist(df=N - 2).ppf(1 - 1 / (B - 1)), num=n_sigma
+        )
 
-    p_want = t_dist(df=N - 1).cdf(sigma_want)
+        # test with N-1 noise samples has T-dist with dof=N-2
+        p_want = t_dist(df=N - 2).cdf(sigma_want)
+
+    elif distribution == 'normal':
+        sigma_want = np.linspace(
+            start=0, stop=norm_dist().ppf(1 - 1 / (B - 1)), num=n_sigma
+        )
+
+        # test with N-1 noise samples has T-dist with dof=N-2
+        p_want = norm_dist().cdf(sigma_want)
+
+    else:
+        raise ValueError('distribution must be either "t-dist" or "normal"')
 
     # Interpolate to find values in perc corresponding to p_want
     perc_interp = np.interp(p_want, perc, np.arange(len(perc)))
