@@ -1,9 +1,10 @@
 from typing import Union
-from functools import wraps
-import inspect
 
 import numpy as np
-from scipy.fft import rfft
+from scipy.fft import rfft, irfft
+from matplotlib.collections import LineCollection
+from matplotlib.colors import Normalize
+from matplotlib.legend_handler import HandlerLineCollection
 
 
 def find_nearest_idx(array, value):
@@ -176,7 +177,7 @@ def harmonic_number_approximation(n):
     return gamma + np.log(n) + 0.5 / n - 1.0 / (12 * n**2) + 1.0 / (120 * n**4)
 
 
-def temp2freq_fft(time_series: np.ndarray, total_time: float):
+def temp2freq_fft(time_series: np.ndarray):
     """
     Fourier series from time to frequency space convention using fft
 
@@ -184,8 +185,6 @@ def temp2freq_fft(time_series: np.ndarray, total_time: float):
     ----------
     time_series : np.ndarray
         The time series that is to be converted to Fourier space
-    total_time : float
-        The total time of the time series in [s]
 
     Returns
     -------
@@ -205,12 +204,10 @@ def temp2freq_fft(time_series: np.ndarray, total_time: float):
         ),
         axis=-1,
     )
-    fourier_series *= total_time / fourier_series.shape[-1]
-
     return fourier_series
 
 
-def freq2temp_fft(fourier_series: np.ndarray, total_time: float):
+def freq2temp_fft(fourier_series: np.ndarray):
     """
     Fourier series from frequency to time space convention using fft
 
@@ -218,8 +215,6 @@ def freq2temp_fft(fourier_series: np.ndarray, total_time: float):
     ----------
     fourier_series : np.ndarray
         The Fourier series that is to be converted to temporal space
-    total_time : float
-        The total time of the time series in [s]
 
     Returns
     -------
@@ -232,9 +227,7 @@ def freq2temp_fft(fourier_series: np.ndarray, total_time: float):
         obj=np.arange(int(fourier_series.shape[-1] / 2)),
         axis=-1,
     )
-    time_series = np.fft.irfft(fourier_series, n=n)
-    time_series *= time_series.shape[-1] / total_time
-
+    time_series = irfft(fourier_series, n=n)
     return time_series
 
 
@@ -441,3 +434,108 @@ def get_wl_bins_const_spec_res(wl_min: float, wl_max: float, spec_res: float):
     wl_bin_edges = np.array(wl_bin_edges) * 1e-6  # in m
 
     return wl_bins, wl_bin_widths, wl_bin_edges
+
+
+def add_normalized_line_collection(ax, cmap, linewidth=3, linestyle="-"):
+    """
+    Adds a normalized line collection to a given matplotlib axis. The line collection
+    is constructed to showcase a smooth gradient using the specified colormap, line
+    width, and line style. The resulting line collection is normalized between values
+    0 and 1.
+
+    :param ax: The matplotlib axis where the line collection will be added.
+    :type ax: matplotlib.axes.Axes
+    :param cmap: The matplotlib colormap used for the gradient color scaling.
+    :type cmap: matplotlib.colors.Colormap
+    :param linewidth: The width of the individual lines in the collection. Default is 3.
+    :type linewidth: float
+    :param linestyle: The style of the lines in the collection (e.g., solid, dashed).
+        Default is '-'.
+    :type linestyle: str
+    :return: A normalized line collection object spanning values from 0 to 1.
+    :rtype: matplotlib.collections.LineCollection
+    """
+    norm = Normalize(vmin=0.0, vmax=1.0)
+    t = np.linspace(0, 1, 100)  # Smooth gradient
+    lc = LineCollection(
+        [np.column_stack([t, t * 0])],
+        cmap=cmap,
+        norm=norm,
+        linewidth=linewidth,
+        linestyle=linestyle,
+    )
+    lc.set_array(
+        np.linspace(0.0, 1, len(t))
+    )  # Ensure this spans 0 to 1 for correct normalization
+    # ax.add_collection(lc)  # Add the LineCollection to the axis
+    return lc
+
+
+class HandlerColorLineCollection(HandlerLineCollection):
+    """
+    Handles the creation of LineCollection artists for use in legends.
+
+    This class is designed to handle customized LineCollection artists in
+    matplotlib legends, allowing for the application of a colormap to the
+    segments of the line collection.
+
+    :ivar cmap: Colormap associated with the handler to apply color gradients.
+    :type cmap: matplotlib.colors.Colormap
+    """
+
+    def __init__(self, cmap, **kwargs):
+        """
+        Represents a customizable object initialization for subclasses, allowing the user
+        to define a colormap and any additional parameters. This class acts as a base
+        for objects requiring configuration with a colormap and inherits functionality
+        from its parent class.
+
+        :param cmap: Colormap specification used for rendering or configuring visual
+            elements. It determines the coloring scheme applied in the object where
+            applicable.
+        :type cmap: Any
+        :param kwargs: Optional key-value arguments that allow additional customization
+            or configuration not specific to the colormap. These arguments are passed
+            directly to the base class initializer.
+        :type kwargs: dict
+        """
+        self.cmap = cmap
+        super().__init__(**kwargs)
+
+    def create_artists(
+        self, legend, artist, xdescent, ydescent, width, height, fontsize, trans
+    ):
+        """
+        Creates and returns a list of LineCollection artists to represent the provided data for rendering in a plot legend.
+
+        The method generates line segments connecting points based on the specified width and height,
+        adjusted by the x and y descents. Each LineCollection artist is styled using the colormap
+        and transform specified, ensuring compatibility with the legend's visual setup.
+
+        :param legend: The legend object to which the LineCollection is associated.
+        :type legend: matplotlib.legend.Legend
+        :param artist: The artist being represented in the legend.
+        :type artist: matplotlib.artist.Artist
+        :param xdescent: Horizontal adjustment between the legend box and the content.
+        :type xdescent: float
+        :param ydescent: Vertical adjustment between the legend box and the content.
+        :type ydescent: float
+        :param width: Available width for rendering the LineCollection in the legend.
+        :type width: float
+        :param height: Available height for rendering the LineCollection in the legend.
+        :type height: float
+        :param fontsize: Font size of the legend text, influencing spacing and scaling.
+        :type fontsize: float
+        :param trans: Transformation to apply to the LineCollection for consistency with the plot.
+        :type trans: matplotlib.transforms.Transform
+        :return: A list containing the created LineCollection artists.
+        :rtype: list[matplotlib.collections.LineCollection]
+        """
+        x = np.linspace(0, width, self.get_numpoints(legend) + 1)
+        y = np.zeros(self.get_numpoints(legend) + 1) + height / 2.0 - ydescent
+        points = np.array([x, y]).T.reshape(-1, 1, 2)
+        segments = np.concatenate([points[:-1], points[1:]], axis=1)
+        lc = LineCollection(segments, cmap=self.cmap, transform=trans)
+        lc.set_array(x)
+        lc.set_linewidth(2)
+        return [lc]
