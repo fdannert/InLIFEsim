@@ -2,15 +2,16 @@
 InLIFEsim
 =========
 
-InLIFEsim is a simulator built to analyze the impact of coherent perturbations
-on exoplanet detections with nulling interferometers. It extends the
-capabilities of `LIFEsim <https://github.com/fdannert/LIFEsim>`_
+InLIFEsim is a simulator built to analyze the impact of instrumental perturbations
+on exoplanet detections and characterizations with nulling interferometers, particularly under the occurrence of
+non-Gaussian noise. It extends the capabilities of `LIFEsim <https://github.com/fdannert/LIFEsim>`_.
 
-Documentation
+Examples
 -------------
 
-The LIFEsim documentation can be found here:
-`https://inlifesim.readthedocs.io/ <https://inlifesim.readthedocs.io/>`_
+The code needed to reproduce all figures and tables from `Dannert et al. 2025 <update link>`_ can be found in
+`docs/source/paper_figures/`.
+The data needed to create the figures is available on `Zenodo <https://zenodo.org/records/15260091>`_.
 
 
 Web Site
