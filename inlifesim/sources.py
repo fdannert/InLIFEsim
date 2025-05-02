@@ -269,11 +269,28 @@ def create_exozodi(wl_bins: np.ndarray,
             np.linspace(-hfov[k], hfov[k], image_size),
             np.linspace(-hfov[k], hfov[k], image_size)
         )
-        for i in range(bl.shape[1]):
-            for j in range(bl.shape[2]):
-                b_ez[k, i, j] = (flux_map_exozodi[k, ] * np.cos(
-                    2 * np.pi / wl_bins[k]
-                    * (bl[0, i, j] * theta_x
-                       + bl[1, i, j] * theta_y))).sum()
+
+        # Compute the phase term
+        phase = 2 * np.pi / wl_bins[k]
+
+        # Broadcast and calculate for all `i, j` at once
+        cos_term = np.cos(
+            phase * (
+                    bl[0][:, :, np.newaxis, np.newaxis] * theta_x +
+                    bl[1][:, :, np.newaxis, np.newaxis] * theta_y
+            )
+        )  # Resulting shape: (bl.shape[1], bl.shape[2], image_size, image_size)
+
+        # Compute flux for all elements
+        b_ez[k] = (
+                flux_map_exozodi[k, np.newaxis, np.newaxis, :, :] * cos_term
+        ).sum(axis=(-2, -1))  # Reduce last two dimensions
+
+        # for i in range(bl.shape[1]):
+        #     for j in range(bl.shape[2]):
+        #         b_ez[k, i, j] = (flux_map_exozodi[k, ] * np.cos(
+        #             2 * np.pi / wl_bins[k]
+        #             * (bl[0, i, j] * theta_x
+        #                + bl[1, i, j] * theta_y))).sum()
 
     return b_ez

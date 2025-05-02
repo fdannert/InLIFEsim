@@ -431,26 +431,31 @@ def localzodi_signal(
 
 
 def fundamental_noise(
-    A: np.ndarray,
-    phi: np.ndarray,
-    b_star: np.ndarray,
-    b_ez: np.ndarray,
-    flux_localzodi: np.ndarray,
-    num_a: int,
-    t_int: float,
-    omega: np.ndarray,
+        A: np.ndarray,
+        phi: np.ndarray,
+        b_star: np.ndarray,
+        b_ez: np.ndarray,
+        flux_localzodi: np.ndarray,
+        num_a: int,
+        t_int: float,
+        omega: np.ndarray,
+        exozodi_only: bool = False,
 ):
-    photon_rates_nchop_pn_sgl = star_signal(
-        A=A, phi=phi, b_star=b_star, num_a=num_a, t_int=t_int
-    )
-
     photon_rates_nchop_pn_ez = exozodi_signal(
         A=A, phi=phi, b_ez=b_ez, num_a=num_a, t_int=t_int
     )
 
-    photon_rates_nchop_pn_lz = localzodi_signal(
-        A=A, omega=omega, flux_localzodi=flux_localzodi, t_int=t_int
-    )
+    if not exozodi_only:
+        photon_rates_nchop_pn_sgl = star_signal(
+            A=A, phi=phi, b_star=b_star, num_a=num_a, t_int=t_int
+        )
+
+        photon_rates_nchop_pn_lz = localzodi_signal(
+            A=A, omega=omega, flux_localzodi=flux_localzodi, t_int=t_int
+        )
+    else:
+        photon_rates_nchop_pn_sgl = None
+        photon_rates_nchop_pn_lz = None
 
     return (
         photon_rates_nchop_pn_sgl,

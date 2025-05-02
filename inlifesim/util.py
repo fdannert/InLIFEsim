@@ -359,7 +359,7 @@ def combine_to_full_observation(arr, t_total, t_rot, t_exp):
     :rtype: numpy.ndarray
     """
     if len(arr.shape) > 1:
-        result = np.tile(A=arr, reps=(1, int(t_total / t_rot)))
+        result = np.tile(A=arr, reps=(1, int(np.round(t_total / t_rot))))
 
         # add the last not-finished rotation
         # result = np.concatenate(
@@ -374,7 +374,7 @@ def combine_to_full_observation(arr, t_total, t_rot, t_exp):
         # )
 
     else:
-        result = np.tile(A=arr, reps=int(t_total / t_rot))
+        result = np.tile(A=arr, reps=int(np.round(t_total / t_rot)))
 
         # add the last not-finished rotation
         # result = np.concatenate(
@@ -539,3 +539,9 @@ class HandlerColorLineCollection(HandlerLineCollection):
         lc.set_array(x)
         lc.set_linewidth(2)
         return [lc]
+
+def in_run(str_list, run_method):
+    if type(str_list) == list:
+        return np.any(np.isin(str_list, run_method)) or ('all' in run_method)
+    else:
+        return (str_list in run_method) or ('all' in run_method)

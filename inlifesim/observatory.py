@@ -10,6 +10,7 @@ from joblib_progress import joblib_progress
 from inlifesim.util import (
     harmonic_number_approximation,
     combine_to_full_observation,
+    in_run,
 )
 from inlifesim.sources import (
     create_star,
@@ -73,8 +74,6 @@ class Instrument(object):
             n_cpu (int): Number of CPU cores for simulation processing.
             rms_mode (str): Mode for RMS values ('lay', 'static', or
             'wavelength').
-            n_sampling_max (int): Maximum Fourier sampling points (default:
-            1e7).
             simultaneous_chopping (bool): Whether both chop states are
             simulated (default: False).
             verbose (bool): If True, prints progress to the console (default:
@@ -160,7 +159,6 @@ class Instrument(object):
             n_cpu: int,
             rms_mode: str,
             hyperrot_noise: Union[str, type(None)] = None,
-            n_sampling_max: int = int(1e7),
             d_a_rms: Union[float, type(None)] = None,
             d_phi_rms: Union[float, type(None)] = None,
             d_pol_rms: Union[float, type(None)] = None,
@@ -208,7 +206,6 @@ class Instrument(object):
         self.image_size = image_size
 
         self.n_cpu = n_cpu
-        self.n_sampling_max = n_sampling_max
 
         self.simultaneous_chopping = simultaneous_chopping
 
@@ -246,8 +243,8 @@ class Instrument(object):
         # adjust exposure time to be a multiple of the rotation period
         t_exp_old = deepcopy(self.t_exp)
         self.t_exp = self.t_rot / np.ceil(self.t_rot / self.t_exp)
-        if int(self.t_rot / self.t_exp) % 2 == 0:
-            self.t_exp = self.t_rot / (int(self.t_rot / self.t_exp) + 1)
+        if int(np.round(self.t_rot / self.t_exp)) % 2 == 0:
+            self.t_exp = self.t_rot / (int(np.round(self.t_rot / self.t_exp)) + 1)
 
         # resulting numbers of samples
         self.n_sampling_total = int(np.round(self.t_total / self.t_exp))
@@ -708,14 +705,6 @@ class Instrument(object):
             `self.photon_rates_nchop` or `self.photon_rates_chop`.
 
         """
-        # because of the incoherent combination of the final outputs, see
-        # Mugnier 2006
-        if self.simultaneous_chopping:
-            # Thank you Philipp!
-            self.photon_rates_nchop["pn_sgl"] *= np.sqrt(2)
-            self.photon_rates_nchop["pn_ez"] *= np.sqrt(2)
-            self.photon_rates_nchop["pn_lz"] *= np.sqrt(2)
-
         self.photon_rates_nchop["fundamental"] = np.sqrt(
             self.photon_rates_nchop["pn_sgl"] ** 2
             + self.photon_rates_nchop["pn_ez"] ** 2
@@ -771,7 +760,6 @@ class Instrument(object):
                 'num_a': self.num_a,
                 'planet_template_chop': self.planet_template_chop[i, :],
                 'rms_mode': self.rms_mode,
-                # 'n_sampling_max': self.n_sampling_max,
                 'n_sampling_total': self.n_sampling_total,
                 'harmonic_number_n_cutoff': self.harmonic_number_n_cutoff,
                 'rms_period_bins': self.rms_period_bins,
@@ -1078,7 +1066,8 @@ class Instrument(object):
         self.photon_rates_chop = self.photon_rates_chop.astype(float)
         self.photon_rates_nchop = self.photon_rates_nchop.astype(float)
 
-    def run(self) -> None:
+    def run(self,
+            run_method:list = ['all']) -> None:
         """
         Executes the main operational flow of the class.
 
@@ -1093,142 +1082,176 @@ class Instrument(object):
         :raises ValueError: If any required attributes are missing or improperly set.
         :raises RuntimeError: If an error occurs during external function calls or intermediate operations.
         """
-        self.instrumental_parameters()
+        if in_run('star', run_method):
+            self.instrumental_parameters()
 
         if self.verbose:
             print("Creating astrophysical sources ...", end=" ")
-        self.flux_star, self.b_star, self.db_star_dx, self.db_star_dy = (
-            create_star(
+
+        if in_run('planet', run_method):
+            if (self.flux_planet is None) or (run_method == ['planet']):
+                self.flux_planet = create_planet(
+                    wl_bins=self.wl_bins,
+                    wl_bin_widths=self.wl_bin_widths,
+                    temp_planet=self.temp_planet,
+                    radius_planet=self.radius_planet,
+                    dist_star=self.dist_star,
+                )
+
+        if in_run('star', run_method):
+            self.flux_star, self.b_star, self.db_star_dx, self.db_star_dy = (
+                create_star(
+                    wl_bins=self.wl_bins,
+                    wl_bin_widths=self.wl_bin_widths,
+                    temp_star=self.temp_star,
+                    radius_star=self.radius_star,
+                    dist_star=self.dist_star,
+                    bl=self.bl,
+                    col_pos=self.col_pos,
+                    num_a=self.num_a,
+                )
+            )
+
+            self.flux_localzodi = create_localzodi(
                 wl_bins=self.wl_bins,
                 wl_bin_widths=self.wl_bin_widths,
-                temp_star=self.temp_star,
-                radius_star=self.radius_star,
-                dist_star=self.dist_star,
+                lat=self.lat_star,
+            )
+
+            self.b_ez = create_exozodi(
+                wl_bins=self.wl_bins,
+                wl_bin_widths=self.wl_bin_widths,
+                z=self.z,
+                l_sun=self.l_sun,
+                r_au=self.r_au,
+                image_size=self.image_size,
+                au_pix=self.au_pix,
+                rad_pix=self.rad_pix,
+                radius_map=self.radius_map,
                 bl=self.bl,
-                col_pos=self.col_pos,
-                num_a=self.num_a,
+                hfov=self.hfov,
             )
-        )
-
-        if self.flux_planet is None:
-            self.flux_planet = create_planet(
-                wl_bins=self.wl_bins,
-                wl_bin_widths=self.wl_bin_widths,
-                temp_planet=self.temp_planet,
-                radius_planet=self.radius_planet,
-                dist_star=self.dist_star,
-            )
-
-        self.flux_localzodi = create_localzodi(
-            wl_bins=self.wl_bins,
-            wl_bin_widths=self.wl_bin_widths,
-            lat=self.lat_star,
-        )
-
-        self.b_ez = create_exozodi(
-            wl_bins=self.wl_bins,
-            wl_bin_widths=self.wl_bin_widths,
-            z=self.z,
-            l_sun=self.l_sun,
-            r_au=self.r_au,
-            image_size=self.image_size,
-            au_pix=self.au_pix,
-            rad_pix=self.rad_pix,
-            radius_map=self.radius_map,
-            bl=self.bl,
-            hfov=self.hfov,
-        )
 
         if self.verbose:
             print("[Done]")
             print("Calculating gradient and Hessian coefficients ...", end=" ")
 
-        self.grad_star, self.hess_star = stellar_leakage(
-            A=self.A,
-            phi=self.phi,
-            b_star=self.b_star,
-            db_star_dx=self.db_star_dx,
-            db_star_dy=self.db_star_dy,
-            num_a=self.num_a,
-        )
-
-        self.grad_star_chop, self.hess_star_chop = stellar_leakage(
-            A=self.A,
-            phi=self.phi_r,
-            b_star=self.b_star,
-            db_star_dx=self.db_star_dx,
-            db_star_dy=self.db_star_dy,
-            num_a=self.num_a,
-        )
-
-        self.grad_ez, self.hess_ez = exozodi_leakage(
-            A=self.A, phi=self.phi, b_ez=self.b_ez, num_a=self.num_a
-        )
-
-        self.grad_ez_chop, self.hess_ez_chop = exozodi_leakage(
-            A=self.A, phi=self.phi_r, b_ez=self.b_ez, num_a=self.num_a
-        )
-
-        self.grad_lz = localzodi_leakage(
-            A=self.A, omega=self.omega, flux_localzodi=self.flux_localzodi
-        )
-
-        self.combine_coefficients()
-
-        if self.verbose:
-            print("[Done]")
-            print("Generating planet signal ...", end=" ")
-
-        (
-            self.planet_template_nchop,
-            self.photon_rates_nchop["signal"],
-            self.planet_signal_nchop,
-            self.planet_template_chop,
-            self.photon_rates_chop["signal"],
-            self.planet_signal_chop,
-        ) = planet_signal(
-            flux_planet=self.flux_planet,
-            t_exp=self.t_exp,
-            t_total=self.t_total,
-            t_rot=self.t_rot,
-            A=self.A,
-            phi=self.phi,
-            phi_r=self.phi_r,
-            wl_bins=self.wl_bins,
-            bl=self.bl,
-            num_a=self.num_a,
-            n_sampling_rot=self.n_sampling_rot,
-            n_sampling_total=self.n_sampling_total,
-            simultaneous_chopping=self.simultaneous_chopping,
-            separation_planet=self.separation_planet,
-            dist_star=self.dist_star,
-        )
-
-        if self.verbose:
-            print("[Done]")
-            print(
-                "Shape of the planet template: {}".format(
-                    self.planet_template_chop.shape
-                )
+        if in_run('star', run_method):
+            self.grad_star, self.hess_star = stellar_leakage(
+                A=self.A,
+                phi=self.phi,
+                b_star=self.b_star,
+                db_star_dx=self.db_star_dx,
+                db_star_dy=self.db_star_dy,
+                num_a=self.num_a,
             )
+
+            self.grad_star_chop, self.hess_star_chop = stellar_leakage(
+                A=self.A,
+                phi=self.phi_r,
+                b_star=self.b_star,
+                db_star_dx=self.db_star_dx,
+                db_star_dy=self.db_star_dy,
+                num_a=self.num_a,
+            )
+
+            self.grad_lz = localzodi_leakage(
+                A=self.A, omega=self.omega, flux_localzodi=self.flux_localzodi
+            )
+
+        if in_run('exozodi', run_method):
+            self.grad_ez, self.hess_ez = exozodi_leakage(
+                A=self.A, phi=self.phi, b_ez=self.b_ez, num_a=self.num_a
+            )
+
+            self.grad_ez_chop, self.hess_ez_chop = exozodi_leakage(
+                A=self.A, phi=self.phi_r, b_ez=self.b_ez, num_a=self.num_a
+            )
+
+        if in_run('exozodi', run_method):
+            self.combine_coefficients()
+
+        if in_run('planet', run_method):
+            if self.verbose:
+                print("[Done]")
+                print("Generating planet signal ...", end=" ")
+            (
+                self.planet_template_nchop,
+                self.photon_rates_nchop["signal"],
+                self.planet_signal_nchop,
+                self.planet_template_chop,
+                self.photon_rates_chop["signal"],
+                self.planet_signal_chop,
+            ) = planet_signal(
+                flux_planet=self.flux_planet,
+                t_exp=self.t_exp,
+                t_total=self.t_total,
+                t_rot=self.t_rot,
+                A=self.A,
+                phi=self.phi,
+                phi_r=self.phi_r,
+                wl_bins=self.wl_bins,
+                bl=self.bl,
+                num_a=self.num_a,
+                n_sampling_rot=self.n_sampling_rot,
+                n_sampling_total=self.n_sampling_total,
+                simultaneous_chopping=self.simultaneous_chopping,
+                separation_planet=self.separation_planet,
+                dist_star=self.dist_star,
+            )
+
+            if self.verbose:
+                print("[Done]")
+                print(
+                    "Shape of the planet template: {}".format(
+                        self.planet_template_chop.shape
+                    )
+                )
+
+        if self.verbose:
             print("Calculating fundamental noise ...", end=" ")
 
-        (
-            self.photon_rates_nchop["pn_sgl"],
-            self.photon_rates_nchop["pn_ez"],
-            self.photon_rates_nchop["pn_lz"],
-        ) = fundamental_noise(
-            A=self.A,
-            phi=self.phi,
-            num_a=self.num_a,
-            t_int=self.t_total,
-            flux_localzodi=self.flux_localzodi,
-            b_star=self.b_star,
-            b_ez=self.b_ez,
-            omega=self.omega,
-        )
+        if in_run(['star', 'exozodi'], run_method):
+            if run_method == ['exozodi']:
+                (
+                    _,
+                    self.photon_rates_nchop["pn_ez"],
+                    _,
+                ) = fundamental_noise(
+                    A=self.A,
+                    phi=self.phi,
+                    num_a=self.num_a,
+                    t_int=self.t_total,
+                    flux_localzodi=self.flux_localzodi,
+                    b_star=self.b_star,
+                    b_ez=self.b_ez,
+                    omega=self.omega,
+                    exozodi_only=True
+                )
+                if self.simultaneous_chopping:
+                    self.photon_rates_nchop["pn_ez"] *= np.sqrt(2)
+            else:
+                (
+                    self.photon_rates_nchop["pn_sgl"],
+                    self.photon_rates_nchop["pn_ez"],
+                    self.photon_rates_nchop["pn_lz"],
+                ) = fundamental_noise(
+                    A=self.A,
+                    phi=self.phi,
+                    num_a=self.num_a,
+                    t_int=self.t_total,
+                    flux_localzodi=self.flux_localzodi,
+                    b_star=self.b_star,
+                    b_ez=self.b_ez,
+                    omega=self.omega,
+                )
+                if self.simultaneous_chopping:
+                    self.photon_rates_nchop["pn_sgl"] *= np.sqrt(2)
+                    self.photon_rates_nchop["pn_ez"] *= np.sqrt(2)
+                    self.photon_rates_nchop["pn_lz"] *= np.sqrt(2)
 
-        self.combine_fundamental()
+        if in_run(['planet', 'systematic'], run_method):
+            self.combine_fundamental()
 
         if self.verbose:
             print("[Done]")
@@ -1240,11 +1263,12 @@ class Instrument(object):
             if self.verbose:
                 print("[Done]")
 
-        if self.verbose:
-            print("Calculating systematics noise (chopping) ...", end=" ")
-        self.sn_chop()
-        self.combine_instrumental()
-        if self.verbose:
-            print("[Done]")
+        if in_run('systematic', run_method):
+            if self.verbose:
+                print("Calculating systematics noise (chopping) ...", end=" ")
+            self.sn_chop()
+            self.combine_instrumental()
+            if self.verbose:
+                print("[Done]")
 
-        self.cleanup()
+            self.cleanup()

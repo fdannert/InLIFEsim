@@ -175,6 +175,10 @@ def create_pink_psd(t_total: float,
                 / np.arange(1, hn_samples + 1)
         )
 
+    # comment out, it breaks EVERYTHING, JUST FOR TESTING!!!!!!
+    # psd = np.zeros(hn_samples)
+    # psd[period_bin[0] - 1] = rms ** 2 * t_total
+
     if not ((n_rot is None) or (n_rot == 1)):
         if hyperrot_noise is None:
             print('Hyperrot noise not specified, using default')
