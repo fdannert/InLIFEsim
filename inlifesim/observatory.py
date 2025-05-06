@@ -772,7 +772,7 @@ class Instrument(object):
                     'hyperrot_noise': self.hyperrot_noise,
                 }
             except:
-                print(self.planet_template_chop[i, :])
+                print(self.planet_template_chop)
                 raise ValueError('STTTOOOOPPPPPP')
 
             if self.instrumental_source is None:
