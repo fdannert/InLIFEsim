@@ -753,24 +753,28 @@ class Instrument(object):
         # prepare variable dictionary to send to multiprocessing workers
         mp_args = []
         for i in range(self.wl_bins.shape[0]):
-
-            arg = {
-                'A': self.A,
-                'wl': self.wl_bins[i],
-                'num_a': self.num_a,
-                'planet_template_chop': self.planet_template_chop[i, :],
-                'rms_mode': self.rms_mode,
-                'n_sampling_total': self.n_sampling_total,
-                'harmonic_number_n_cutoff': self.harmonic_number_n_cutoff,
-                'rms_period_bins': self.rms_period_bins,
-                't_total': self.t_total,
-                'd_a_rms': self.d_a_rms,
-                'd_phi_rms': self.d_phi_rms,
-                'd_pol_rms': self.d_pol_rms,
-                'flux_star': self.flux_star[i],
-                'n_rot': self.n_rot,
-                'hyperrot_noise': self.hyperrot_noise,
-            }
+            try:
+                arg = {
+                    'A': self.A,
+                    'wl': self.wl_bins[i],
+                    'num_a': self.num_a,
+                    'planet_template_chop': self.planet_template_chop[i, :],
+                    'rms_mode': self.rms_mode,
+                    'n_sampling_total': self.n_sampling_total,
+                    'harmonic_number_n_cutoff': self.harmonic_number_n_cutoff,
+                    'rms_period_bins': self.rms_period_bins,
+                    't_total': self.t_total,
+                    'd_a_rms': self.d_a_rms,
+                    'd_phi_rms': self.d_phi_rms,
+                    'd_pol_rms': self.d_pol_rms,
+                    'flux_star': self.flux_star[i],
+                    'n_rot': self.n_rot,
+                    'hyperrot_noise': self.hyperrot_noise,
+                }
+            except Exception as e:
+                print(e)
+                print(i)
+                return e
 
             if self.instrumental_source is None:
                 arg['grad_n_coeff'] = self.grad_n_coeff[i]
